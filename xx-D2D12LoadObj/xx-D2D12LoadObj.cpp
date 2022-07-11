@@ -1,6 +1,27 @@
-﻿#include "5-SkyBox.h"
+﻿#include <SDKDDKVer.h>
+#define WIN32_LEAN_AND_MEAN // 从 Windows 头中排除极少使用的资料
+#include <windows.h>
+#include <tchar.h>
+#include <fstream>  //for ifstream
+#include <strsafe.h>
+#include <atlconv.h> //for T2A
+#include <atlcoll.h>
+#include <wrl.h> //添加WTL支持 方便使用COM
+#include <dxgi1_6.h>
+#include <DirectXMath.h>
+#include <d3d12.h>//for d3d12
+#include <d3dcompiler.h>
+#if defined(_DEBUG)
+#include <dxgidebug.h>
+#endif
+#include <wincodec.h> //for WIC
 
-#include "./OBJLoadClass.h"
+#include "..\WindowsCommons\DDSTextureLoader12.h"
+
+using namespace std;
+using namespace Microsoft;
+using namespace Microsoft::WRL;
+using namespace DirectX;
 
 //linker
 #pragma comment(lib, "dxguid.lib")
@@ -164,20 +185,11 @@ DXGI_FORMAT GetDXGIFormatFromPixelFormat(const GUID* pPixelFormat)
 
 #endif // !GRS_BLOCK
 
-
-struct ST_GRS_SKYBOX_VERTEX
-{//天空盒子的顶点结构
-public:
-	XMFLOAT4 m_v4Position;
-public:
-	ST_GRS_SKYBOX_VERTEX() :m_v4Position() {}
-	ST_GRS_SKYBOX_VERTEX(float x, float y, float z)
-		:m_v4Position(x, y, z, 1.0f)
-	{}
-	ST_GRS_SKYBOX_VERTEX& operator = (const ST_GRS_SKYBOX_VERTEX& vt)
-	{
-		m_v4Position = vt.m_v4Position;
-	}
+struct ST_GRS_VERTEX
+{//这次我们额外加入了每个顶点的法线，但Shader中还暂时没有用
+	XMFLOAT4 m_v4Position;		//Position
+	XMFLOAT2 m_vTex;		//Texcoord
+	XMFLOAT3 m_vNor;		//Normal
 };
 
 struct ST_GRS_FRAME_MVP_BUFFER
@@ -211,15 +223,15 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 	int									iWndHeight = 768;
 	UINT								nCurrentFrameIndex = 0;
 	UINT								nDXGIFactoryFlags = 0U;
-	
+
 
 	HWND								hWnd = nullptr;
 	MSG									msg = {};
 	TCHAR								pszAppPath[MAX_PATH] = {};
 
-	ST_GRS_FRAME_MVP_BUFFER*			pMVPBufEarth = nullptr;
+	ST_GRS_FRAME_MVP_BUFFER* pMVPBufEarth = nullptr;
 
-	ST_GRS_FRAME_MVP_BUFFER*			pMVPBufSkybox = nullptr;
+	ST_GRS_FRAME_MVP_BUFFER* pMVPBufSkybox = nullptr;
 	//常量缓冲区大小上对齐到256Bytes边界
 	SIZE_T								szMVPBuf = GRS_UPPER(sizeof(ST_GRS_FRAME_MVP_BUFFER), 256);
 
@@ -258,19 +270,17 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 	UINT								nRTVDescriptorSize = 0;
 	UINT								nSRVDescriptorSize = 0;
 	UINT								nSamplerDescriptorSize = 0; //采样器大小
-	
+
 
 	D3D12_VIEWPORT						stViewPort = { 0.0f, 0.0f, static_cast<float>(iWndWidth), static_cast<float>(iWndHeight), D3D12_MIN_DEPTH, D3D12_MAX_DEPTH };
 	D3D12_RECT							stScissorRect = { 0, 0, static_cast<LONG>(iWndWidth), static_cast<LONG>(iWndHeight) };
 
 	//球体的网格数据
-	ST_GRS_VERTEX*						pstSphereVertices = nullptr;
+	ST_GRS_VERTEX* pstSphereVertices = nullptr;
 	UINT								nSphereVertexCnt = 0;
-	UINT*								pSphereIndices = nullptr;
+	UINT* pSphereIndices = nullptr;
 	UINT								nSphereIndexCnt = 0;
 
-	//Sky Box的网格数据
-	UINT								nSkyboxIndexCnt = 0;
 
 	//======================================================================================================
 	//加载Skybox的Cube Map需要的变量
@@ -415,8 +425,8 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 
 			//使用WIC类厂对象接口加载纹理图片，并得到一个WIC解码器对象接口，图片信息就在这个接口代表的对象中了
 			WCHAR pszTexcuteFileName[MAX_PATH] = {};
-			StringCchPrintfW(pszTexcuteFileName, MAX_PATH, _T("%sAssets\\pig\\UV.png"), pszAppPath);
-
+			//StringCchPrintfW(pszTexcuteFileName, MAX_PATH, _T("%sAssets\\金星.jpg"), pszAppPath);
+			pszTexcuteFileName = L"D:\common\Users\zhuxu\Pictures\pig\UV.png";
 			GRS_THROW_IF_FAILED(pIWICFactory->CreateDecoderFromFilename(
 				pszTexcuteFileName,              // 文件名
 				nullptr,                            // 不指定解码器，使用默认
@@ -497,7 +507,7 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 		// 创建DXGI Factory对象
 		{
 			GRS_THROW_IF_FAILED(CreateDXGIFactory2(nDXGIFactoryFlags, IID_PPV_ARGS(&pIDXGIFactory5)));
-			
+
 		}
 
 		// 枚举适配器创建设备
@@ -517,7 +527,7 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 				GRS_THROW_IF_FAILED(pID3D12Device4->CheckFeatureSupport(D3D12_FEATURE_ARCHITECTURE
 					, &stArchitecture, sizeof(D3D12_FEATURE_DATA_ARCHITECTURE)));
 
-				if (stArchitecture.UMA)
+				if (!stArchitecture.UMA)
 				{
 					break;
 				}
@@ -540,7 +550,7 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 				, pszWndTitle
 				, stAdapterDesc1.Description);
 			::SetWindowText(hWnd, pszWndTitle);
-			
+
 			nRTVDescriptorSize = pID3D12Device4->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 			nSRVDescriptorSize = pID3D12Device4->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 			nSamplerDescriptorSize = pID3D12Device4->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
@@ -604,7 +614,7 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 			stRTVHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
 
 			GRS_THROW_IF_FAILED(pID3D12Device4->CreateDescriptorHeap(&stRTVHeapDesc, IID_PPV_ARGS(&pIRTVHeap)));
-			
+
 			//---------------------------------------------------------------------------------------------
 			D3D12_CPU_DESCRIPTOR_HANDLE stRTVHandle = { pIRTVHeap->GetCPUDescriptorHandleForHeapStart() };
 			for (UINT i = 0; i < nFrameBackBufCount; i++)
@@ -621,7 +631,7 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 		// 创建深度缓冲及深度缓冲描述符堆
 		{
 			D3D12_HEAP_PROPERTIES stDSBufHeapDesc = {};
-			
+
 			stDSBufHeapDesc.Type = D3D12_HEAP_TYPE_DEFAULT;
 			stDSBufHeapDesc.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
 			stDSBufHeapDesc.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
@@ -653,7 +663,7 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 			//使用隐式默认堆创建一个深度蜡板缓冲区，
 			//因为基本上深度缓冲区会一直被使用，重用的意义不大，所以直接使用隐式堆，图方便
 			GRS_THROW_IF_FAILED(pID3D12Device4->CreateCommittedResource(
-				& stDSBufHeapDesc
+				&stDSBufHeapDesc
 				, D3D12_HEAP_FLAG_NONE
 				, &stDSResDesc
 				, D3D12_RESOURCE_STATE_DEPTH_WRITE
@@ -697,7 +707,7 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 			stSamplerHeapDesc.NumDescriptors = 1; //天空盒子就一个采样器
 			GRS_THROW_IF_FAILED(pID3D12Device4->CreateDescriptorHeap(&stSamplerHeapDesc, IID_PPV_ARGS(&pISampleHpSkybox)));
 
-			
+
 		}
 
 		// 创建根签名
@@ -751,7 +761,7 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 			stRootParameters[2].DescriptorTable.NumDescriptorRanges = 1;
 			stRootParameters[2].DescriptorTable.pDescriptorRanges = &stDSPRanges[2];
 
-			
+
 			D3D12_VERSIONED_ROOT_SIGNATURE_DESC stRootSignatureDesc = {};
 			stRootSignatureDesc.Version = D3D_ROOT_SIGNATURE_VERSION_1_1;
 			stRootSignatureDesc.Desc_1_1.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
@@ -760,7 +770,7 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 			stRootSignatureDesc.Desc_1_1.NumStaticSamplers = 0;
 			stRootSignatureDesc.Desc_1_1.pStaticSamplers = nullptr;
 
-			
+
 			ComPtr<ID3DBlob> pISignatureBlob;
 			ComPtr<ID3DBlob> pIErrorBlob;
 			GRS_THROW_IF_FAILED(D3D12SerializeVersionedRootSignature(&stRootSignatureDesc
@@ -1028,8 +1038,8 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 			BYTE* pSrcSlice = reinterpret_cast<BYTE*>(pbPicData);
 			for (UINT y = 0; y < nTextureRowNum; ++y)
 			{
-				memcpy(pDestSlice + static_cast<SIZE_T>(stTxtLayoutsEarth.Footprint.RowPitch)* y
-					, pSrcSlice + static_cast<SIZE_T>(nRowPitchEarth)* y
+				memcpy(pDestSlice + static_cast<SIZE_T>(stTxtLayoutsEarth.Footprint.RowPitch) * y
+					, pSrcSlice + static_cast<SIZE_T>(nRowPitchEarth) * y
 					, nRowPitchEarth);
 			}
 			//取消映射 对于易变的数据如每帧的变换矩阵等数据，可以撒懒不用Unmap了，
@@ -1066,7 +1076,7 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 			// 这里是第一次调用GetCopyableFootprints
 			pID3D12Device4->GetCopyableFootprints(&stCopyDstDesc
 				, 0, static_cast<UINT>(arSubResources.size()), 0, nullptr, nullptr, nullptr, &n64szUploadBufSkybox);
-			
+
 			D3D12_HEAP_DESC stUploadHeapDesc = {  };
 			//尺寸依然是实际纹理数据大小的2倍并64K边界对齐大小
 			stUploadHeapDesc.SizeInBytes = GRS_UPPER(2 * n64szUploadBufSkybox, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT);
@@ -1081,17 +1091,17 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 			GRS_THROW_IF_FAILED(pID3D12Device4->CreateHeap(&stUploadHeapDesc, IID_PPV_ARGS(&pIUploadHeapSkybox)));
 
 			D3D12_RESOURCE_DESC stUploadBufDesc = {};
-			stUploadBufDesc.Dimension			= D3D12_RESOURCE_DIMENSION_BUFFER;
-			stUploadBufDesc.Alignment			= D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT;
-			stUploadBufDesc.Width				= n64szUploadBufSkybox;
-			stUploadBufDesc.Height				= 1;
-			stUploadBufDesc.DepthOrArraySize	= 1;
-			stUploadBufDesc.MipLevels			= 1;
-			stUploadBufDesc.Format				= DXGI_FORMAT_UNKNOWN;
-			stUploadBufDesc.SampleDesc.Count	= 1;
-			stUploadBufDesc.SampleDesc.Quality	= 0;
-			stUploadBufDesc.Layout				= D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-			stUploadBufDesc.Flags				= D3D12_RESOURCE_FLAG_NONE;
+			stUploadBufDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+			stUploadBufDesc.Alignment = D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT;
+			stUploadBufDesc.Width = n64szUploadBufSkybox;
+			stUploadBufDesc.Height = 1;
+			stUploadBufDesc.DepthOrArraySize = 1;
+			stUploadBufDesc.MipLevels = 1;
+			stUploadBufDesc.Format = DXGI_FORMAT_UNKNOWN;
+			stUploadBufDesc.SampleDesc.Count = 1;
+			stUploadBufDesc.SampleDesc.Quality = 0;
+			stUploadBufDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+			stUploadBufDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
 
 			GRS_THROW_IF_FAILED(pID3D12Device4->CreatePlacedResource(pIUploadHeapSkybox.Get()
 				, 0
@@ -1107,14 +1117,14 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 			D3D12_RESOURCE_DESC stDefaultResDesc = pITextureSkybox->GetDesc();
 
 			UINT64 n64RequiredSize = 0;
-			SIZE_T szMemToAlloc = static_cast<UINT64>(sizeof(D3D12_PLACED_SUBRESOURCE_FOOTPRINT) 
-				+ sizeof(UINT) 
-				+ sizeof(UINT64)) 
+			SIZE_T szMemToAlloc = static_cast<UINT64>(sizeof(D3D12_PLACED_SUBRESOURCE_FOOTPRINT)
+				+ sizeof(UINT)
+				+ sizeof(UINT64))
 				* nNumSubresources;
 
 			void* pMem = GRS_CALLOC(static_cast<SIZE_T>(szMemToAlloc));
 
-			if ( nullptr == pMem )
+			if (nullptr == pMem)
 			{
 				throw CGRSCOMException(HRESULT_FROM_WIN32(GetLastError()));
 			}
@@ -1132,20 +1142,20 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 			{
 				return 0;
 			}
-			
+
 			// 第一遍Copy！注意3重循环每重的意思
 			for (UINT i = 0; i < nNumSubresources; ++i)
 			{// SubResources
-				if ( pRowSizesInBytes[i] > (SIZE_T)-1 )
+				if (pRowSizesInBytes[i] > (SIZE_T)-1)
 				{
 					throw CGRSCOMException(E_FAIL);
 				}
 
 				D3D12_MEMCPY_DEST stCopyDestData = { pData + pLayouts[i].Offset
 					, pLayouts[i].Footprint.RowPitch
-					, pLayouts[i].Footprint.RowPitch * pNumRows[i] 
+					, pLayouts[i].Footprint.RowPitch * pNumRows[i]
 				};
-				
+
 				for (UINT z = 0; z < pLayouts[i].Footprint.Depth; ++z)
 				{// Mipmap
 					BYTE* pDestSlice = reinterpret_cast<BYTE*>(stCopyDestData.pData) + stCopyDestData.SlicePitch * z;
@@ -1168,7 +1178,7 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 			}
 			else
 			{
-				for ( UINT i = 0; i < nNumSubresources; ++i )
+				for (UINT i = 0; i < nNumSubresources; ++i)
 				{
 					D3D12_TEXTURE_COPY_LOCATION stDstCopyLocation = {};
 					stDstCopyLocation.pResource = pITextureSkybox.Get();
@@ -1185,7 +1195,7 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 			}
 
 			D3D12_RESOURCE_BARRIER stTransResBarrier = {};
-	
+
 			stTransResBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
 			stTransResBarrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
 			stTransResBarrier.Transition.pResource = pITextureSkybox.Get();
@@ -1290,34 +1300,6 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 
 				pSphereIndices[i] = i;
 			}
-		}
-
-		//加载猪猪头套数据
-		{
-			OBJLoadClass tOBJLoadClass("D:\\common\\work\\solution\\test\\GRSD3D12Sample\\Assets\\pig\\pig_base.obj");
-			nSphereVertexCnt = tOBJLoadClass.mVertexData.size();
-			nSphereIndexCnt = nSphereVertexCnt;
-			pstSphereVertices = (ST_GRS_VERTEX*)GRS_CALLOC(nSphereVertexCnt * sizeof(ST_GRS_VERTEX));
-			pSphereIndices = (UINT*)GRS_CALLOC(nSphereVertexCnt * sizeof(UINT));
-
-
-			for (UINT i = 0; i < nSphereVertexCnt; i++)
-			{
-				pstSphereVertices[i].m_v4Position.x = tOBJLoadClass.mVertexData[i].m_v4Position.x;
-				pstSphereVertices[i].m_v4Position.y = tOBJLoadClass.mVertexData[i].m_v4Position.y;
-				pstSphereVertices[i].m_v4Position.z = tOBJLoadClass.mVertexData[i].m_v4Position.z;
-				pstSphereVertices[i].m_v4Position.w = tOBJLoadClass.mVertexData[i].m_v4Position.w;
-
-				pstSphereVertices[i].m_vTex.x = tOBJLoadClass.mVertexData[i].m_vTex.x;
-				pstSphereVertices[i].m_vTex.y = tOBJLoadClass.mVertexData[i].m_vTex.y;
-
-				pstSphereVertices[i].m_vNor.x = tOBJLoadClass.mVertexData[i].m_vNor.x;
-				pstSphereVertices[i].m_vNor.y = tOBJLoadClass.mVertexData[i].m_vNor.y;
-				pstSphereVertices[i].m_vNor.z = tOBJLoadClass.mVertexData[i].m_vNor.z;
-
-				pSphereIndices[i] = i;
-			}
-
 		}
 
 		// 使用“定位方式”创建顶点缓冲和索引缓冲，使用与上传纹理数据缓冲相同的一个上传堆
@@ -1700,11 +1682,11 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 						dModelRotationYAngle = fmod(dModelRotationYAngle, XM_2PI);
 					}
 
-					XMMATRIX xmView = XMMatrixLookAtRH(XMLoadFloat3(&g_f3EyePos)
+					XMMATRIX xmView = XMMatrixLookAtLH(XMLoadFloat3(&g_f3EyePos)
 						, XMLoadFloat3(&g_f3LockAt)
 						, XMLoadFloat3(&g_f3HeapUp));
 
-					XMMATRIX xmProj = XMMatrixPerspectiveFovRH(XM_PIDIV4
+					XMMATRIX xmProj = XMMatrixPerspectiveFovLH(XM_PIDIV4
 						, (FLOAT)iWndWidth / (FLOAT)iWndHeight, 1.0f, 2000.0f);
 					//使用“Assets\\sky_cube.dds”时需要XMMATRIX(1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1)乘以xmView
 					XMMATRIX xmSkyBox = xmView;// XMMatrixMultiply(XMMATRIX(1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1), xmView);
@@ -1755,9 +1737,9 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 
 				//===============================================================================================
 				//31、执行Skybox的捆绑包
-				//ID3D12DescriptorHeap* ppHeapsSkybox[] = { pISRVHpSkybox.Get(),pISampleHpSkybox.Get() };
-				//pICmdListDirect->SetDescriptorHeaps(_countof(ppHeapsSkybox), ppHeapsSkybox);
-				//pICmdListDirect->ExecuteBundle(pIBundlesSkybox.Get());
+				ID3D12DescriptorHeap* ppHeapsSkybox[] = { pISRVHpSkybox.Get(),pISampleHpSkybox.Get() };
+				pICmdListDirect->SetDescriptorHeaps(_countof(ppHeapsSkybox), ppHeapsSkybox);
+				pICmdListDirect->ExecuteBundle(pIBundlesSkybox.Get());
 				//===============================================================================================
 
 				//===============================================================================================
@@ -1817,7 +1799,7 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 		}
 		//::CoUninitialize();
 	}
-	catch (CGRSCOMException & e)
+	catch (CGRSCOMException& e)
 	{//发生了COM异常
 		e;
 	}

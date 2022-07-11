@@ -153,11 +153,16 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="4-D3D12TextureCube.cpp" />
+    <ClCompile Include="OBJLoadClass.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Shader\TextureCube.hlsl">
       <FileType>Document</FileType>
     </None>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="4-D3D12TextureCube.h" />
+    <ClInclude Include="OBJLoadClass.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

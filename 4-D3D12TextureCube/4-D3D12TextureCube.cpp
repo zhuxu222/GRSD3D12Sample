@@ -1,17 +1,6 @@
-#include <SDKDDKVer.h>
-#define WIN32_LEAN_AND_MEAN // ´Ó Windows Í·ÖĞÅÅ³ı¼«ÉÙÊ¹ÓÃµÄ×ÊÁÏ
-#include <windows.h>
-#include <tchar.h>
-#include <strsafe.h>
-#include <wrl.h>//Ìí¼ÓWTLÖ§³Ö ·½±ãÊ¹ÓÃCOM
-#include <dxgi1_6.h>
-#include <DirectXMath.h>
-#include <d3d12.h>//for d3d12
-#include <d3dcompiler.h>
-#if defined(_DEBUG)
-#include <dxgidebug.h>
-#endif
-#include <wincodec.h> //for WIC
+ï»¿#include "4-D3D12TextureCube.h"
+
+#include "OBJLoadClass.h"
 
 using namespace Microsoft;
 using namespace Microsoft::WRL;
@@ -29,11 +18,17 @@ using namespace DirectX;
 #define GRS_THROW_IF_FAILED(hr) {HRESULT _hr = (hr);if (FAILED(_hr)){ throw CGRSCOMException(_hr); }}
 
 
-//ĞÂ¶¨ÒåµÄºêÓÃÓÚÉÏÈ¡Õû³ı·¨
+//æ–°å®šä¹‰çš„å®ç”¨äºä¸Šå–æ•´é™¤æ³•
 #define GRS_UPPER_DIV(A,B) ((UINT)(((A)+((B)-1))/(B)))
 
-//¸ü¼ò½àµÄÏòÉÏ±ß½ç¶ÔÆëËã·¨ ÄÚ´æ¹ÜÀíÖĞ³£ÓÃ Çë¼Ç×¡
+//æ›´ç®€æ´çš„å‘ä¸Šè¾¹ç•Œå¯¹é½ç®—æ³• å†…å­˜ç®¡ç†ä¸­å¸¸ç”¨ è¯·è®°ä½
 #define GRS_UPPER(A,B) ((UINT)(((A)+((B)-1))&~(B - 1)))
+
+// å†…å­˜åˆ†é…çš„å®å®šä¹‰
+#define GRS_ALLOC(sz)		::HeapAlloc(GetProcessHeap(),0,(sz))
+#define GRS_CALLOC(sz)		::HeapAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,(sz))
+#define GRS_CREALLOC(p,sz)	::HeapReAlloc(GetProcessHeap(),HEAP_ZERO_MEMORY,(p),(sz))
+#define GRS_SAFE_FREE(p)		if( nullptr != (p) ){ ::HeapFree( ::GetProcessHeap(),0,(p) ); (p) = nullptr; }
 
 class CGRSCOMException
 {
@@ -56,7 +51,7 @@ struct WICTranslate
 };
 
 static WICTranslate g_WICFormats[] =
-{//WIC¸ñÊ½ÓëDXGIÏñËØ¸ñÊ½µÄ¶ÔÓ¦±í£¬¸Ã±íÖĞµÄ¸ñÊ½Îª±»Ö§³ÖµÄ¸ñÊ½
+{//WICæ ¼å¼ä¸DXGIåƒç´ æ ¼å¼çš„å¯¹åº”è¡¨ï¼Œè¯¥è¡¨ä¸­çš„æ ¼å¼ä¸ºè¢«æ”¯æŒçš„æ ¼å¼
 	{ GUID_WICPixelFormat128bppRGBAFloat,       DXGI_FORMAT_R32G32B32A32_FLOAT },
 
 	{ GUID_WICPixelFormat64bppRGBAHalf,         DXGI_FORMAT_R16G16B16A16_FLOAT },
@@ -80,7 +75,7 @@ static WICTranslate g_WICFormats[] =
 	{ GUID_WICPixelFormat8bppAlpha,             DXGI_FORMAT_A8_UNORM },
 };
 
-// WIC ÏñËØ¸ñÊ½×ª»»±í.
+// WIC åƒç´ æ ¼å¼è½¬æ¢è¡¨.
 struct WICConvert
 {
 	GUID source;
@@ -89,7 +84,7 @@ struct WICConvert
 
 static WICConvert g_WICConvert[] =
 {
-	// Ä¿±ê¸ñÊ½Ò»¶¨ÊÇ×î½Ó½üµÄ±»Ö§³ÖµÄ¸ñÊ½
+	// ç›®æ ‡æ ¼å¼ä¸€å®šæ˜¯æœ€æ¥è¿‘çš„è¢«æ”¯æŒçš„æ ¼å¼
 	{ GUID_WICPixelFormatBlackWhite,            GUID_WICPixelFormat8bppGray }, // DXGI_FORMAT_R8_UNORM
 
 	{ GUID_WICPixelFormat1bppIndexed,           GUID_WICPixelFormat32bppRGBA }, // DXGI_FORMAT_R8G8B8A8_UNORM
@@ -143,7 +138,7 @@ static WICConvert g_WICConvert[] =
 };
 
 bool GetTargetPixelFormat(const GUID* pSourceFormat, GUID* pTargetFormat)
-{//²é±íÈ·¶¨¼æÈİµÄ×î½Ó½ü¸ñÊ½ÊÇÄÄ¸ö
+{//æŸ¥è¡¨ç¡®å®šå…¼å®¹çš„æœ€æ¥è¿‘æ ¼å¼æ˜¯å“ªä¸ª
 	*pTargetFormat = *pSourceFormat;
 	for (size_t i = 0; i < _countof(g_WICConvert); ++i)
 	{
@@ -157,7 +152,7 @@ bool GetTargetPixelFormat(const GUID* pSourceFormat, GUID* pTargetFormat)
 }
 
 DXGI_FORMAT GetDXGIFormatFromPixelFormat(const GUID* pPixelFormat)
-{//²é±íÈ·¶¨×îÖÕ¶ÔÓ¦µÄDXGI¸ñÊ½ÊÇÄÄÒ»¸ö
+{//æŸ¥è¡¨ç¡®å®šæœ€ç»ˆå¯¹åº”çš„DXGIæ ¼å¼æ˜¯å“ªä¸€ä¸ª
 	for (size_t i = 0; i < _countof(g_WICFormats); ++i)
 	{
 		if (InlineIsEqualGUID(g_WICFormats[i].wic, *pPixelFormat))
@@ -168,27 +163,27 @@ DXGI_FORMAT GetDXGIFormatFromPixelFormat(const GUID* pPixelFormat)
 	return DXGI_FORMAT_UNKNOWN;
 }
 
-struct ST_GRS_VERTEX
-{//Õâ´ÎÎÒÃÇ¶îÍâ¼ÓÈëÁËÃ¿¸ö¶¥µãµÄ·¨Ïß£¬µ«ShaderÖĞ»¹ÔİÊ±Ã»ÓĞÓÃ
-	XMFLOAT4 m_v4Position;		//Position
-	XMFLOAT2 m_vTex;		//Texcoord
-	XMFLOAT3 m_vNor;		//Normal
-};
+//struct ST_GRS_VERTEX
+//{//è¿™æ¬¡æˆ‘ä»¬é¢å¤–åŠ å…¥äº†æ¯ä¸ªé¡¶ç‚¹çš„æ³•çº¿ï¼Œä½†Shaderä¸­è¿˜æš‚æ—¶æ²¡æœ‰ç”¨
+//	XMFLOAT4 m_v4Position;		//Position
+//	XMFLOAT2 m_vTex;		//Texcoord
+//	XMFLOAT3 m_vNor;		//Normal
+//};
 
 struct ST_GRS_FRAME_MVP_BUFFER
 {
-	XMFLOAT4X4 m_MVP;			//¾­µäµÄModel-view-projection(MVP)¾ØÕó.
+	XMFLOAT4X4 m_MVP;			//ç»å…¸çš„Model-view-projection(MVP)çŸ©é˜µ.
 };
 
-UINT g_nCurrentSamplerNO = 0; //µ±Ç°Ê¹ÓÃµÄ²ÉÑùÆ÷Ë÷Òı
-UINT g_nSampleMaxCnt = 5;	  //´´½¨Îå¸öµäĞÍµÄ²ÉÑùÆ÷
+UINT g_nCurrentSamplerNO = 0; //å½“å‰ä½¿ç”¨çš„é‡‡æ ·å™¨ç´¢å¼•
+UINT g_nSampleMaxCnt = 5;	  //åˆ›å»ºäº”ä¸ªå…¸å‹çš„é‡‡æ ·å™¨
 
-//³õÊ¼µÄÄ¬ÈÏÉãÏñ»úµÄÎ»ÖÃ
-XMVECTOR g_v4EyePos = XMVectorSet(0.0f, 2.0f, -15.0f, 0.0f); //ÑÛ¾¦Î»ÖÃ
-XMVECTOR g_v4LookAt = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);    //ÑÛ¾¦Ëù¶¢µÄÎ»ÖÃ
-XMVECTOR g_v4UpDir = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);    //Í·²¿ÕıÉÏ·½Î»ÖÃ
+//åˆå§‹çš„é»˜è®¤æ‘„åƒæœºçš„ä½ç½®
+XMVECTOR g_v4EyePos = XMVectorSet(0.0f, 2.0f, -15.0f, 0.0f); //çœ¼ç›ä½ç½®
+XMVECTOR g_v4LookAt = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);    //çœ¼ç›æ‰€ç›¯çš„ä½ç½®
+XMVECTOR g_v4UpDir = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);    //å¤´éƒ¨æ­£ä¸Šæ–¹ä½ç½®
 													 
-double g_fPalstance = 10.0f * XM_PI / 180.0f;	//ÎïÌåĞı×ªµÄ½ÇËÙ¶È£¬µ¥Î»£º»¡¶È/Ãë
+double g_fPalstance = 10.0f * XM_PI / 180.0f;	//ç‰©ä½“æ—‹è½¬çš„è§’é€Ÿåº¦ï¼Œå•ä½ï¼šå¼§åº¦/ç§’
 
 LRESULT CALLBACK    WndProc(HWND, UINT, WPARAM, LPARAM);
 
@@ -232,10 +227,15 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 	D3D12_RESOURCE_DESC					stTextureDesc = {};
 	D3D12_RESOURCE_DESC					stDestDesc = {};
 
-	UINT								nSamplerDescriptorSize = 0; //²ÉÑùÆ÷´óĞ¡
+	UINT								nSamplerDescriptorSize = 0; //é‡‡æ ·å™¨å¤§å°
 
 	D3D12_VIEWPORT						stViewPort = { 0.0f, 0.0f, static_cast<float>(iWidth), static_cast<float>(iHeight), D3D12_MIN_DEPTH, D3D12_MAX_DEPTH };
 	D3D12_RECT							stScissorRect = { 0, 0, static_cast<LONG>(iWidth), static_cast<LONG>(iHeight) };
+
+	ST_GRS_VERTEX* pstSphereVertices = nullptr;
+	UINT								nSphereVertexCnt = 0;
+	UINT* pSphereIndices = nullptr;
+	UINT								nSphereIndexCnt = 0;
 
 	ComPtr<IDXGIFactory5>				pIDXGIFactory5;
 	ComPtr<IDXGIAdapter1>				pIAdapter1;
@@ -274,7 +274,7 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 
 	try
 	{
-		// µÃµ½µ±Ç°µÄ¹¤×÷Ä¿Â¼£¬·½±ãÎÒÃÇÊ¹ÓÃÏà¶ÔÂ·¾¶À´·ÃÎÊ¸÷ÖÖ×ÊÔ´ÎÄ¼ş
+		// å¾—åˆ°å½“å‰çš„å·¥ä½œç›®å½•ï¼Œæ–¹ä¾¿æˆ‘ä»¬ä½¿ç”¨ç›¸å¯¹è·¯å¾„æ¥è®¿é—®å„ç§èµ„æºæ–‡ä»¶
 		{
 			if (0 == ::GetModuleFileName(nullptr, pszAppPath, MAX_PATH))
 			{
@@ -283,24 +283,24 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 
 			WCHAR* lastSlash = _tcsrchr(pszAppPath, _T('\\'));
 			if (lastSlash)
-			{//É¾³ıExeÎÄ¼şÃû
+			{//åˆ é™¤Exeæ–‡ä»¶å
 				*(lastSlash) = _T('\0');
 			}
 
 			lastSlash = _tcsrchr(pszAppPath, _T('\\'));
 			if (lastSlash)
-			{//É¾³ıx64Â·¾¶
+			{//åˆ é™¤x64è·¯å¾„
 				*(lastSlash) = _T('\0');
 			}
 
 			lastSlash = _tcsrchr(pszAppPath, _T('\\'));
 			if (lastSlash)
-			{//É¾³ıDebug »ò ReleaseÂ·¾¶
+			{//åˆ é™¤Debug æˆ– Releaseè·¯å¾„
 				*(lastSlash + 1) = _T('\0');
 			}
 		}
 
-		// ´´½¨´°¿Ú
+		// åˆ›å»ºçª—å£
 		{
 			//---------------------------------------------------------------------------------------------
 			WNDCLASSEX wcex = {};
@@ -311,7 +311,7 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 			wcex.cbWndExtra = 0;
 			wcex.hInstance = hInstance;
 			wcex.hCursor = LoadCursor(nullptr, IDC_ARROW);
-			wcex.hbrBackground = (HBRUSH)GetStockObject(NULL_BRUSH);		//·ÀÖ¹ÎŞÁÄµÄ±³¾°ÖØ»æ
+			wcex.hbrBackground = (HBRUSH)GetStockObject(NULL_BRUSH);		//é˜²æ­¢æ— èŠçš„èƒŒæ™¯é‡ç»˜
 			wcex.lpszClassName = GRS_WND_CLASS_NAME;
 			RegisterClassEx(&wcex);
 
@@ -319,7 +319,7 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 			RECT rtWnd = { 0, 0, iWidth, iHeight };
 			AdjustWindowRect(&rtWnd, dwWndStyle, FALSE);
 
-			// ¼ÆËã´°¿Ú¾ÓÖĞµÄÆÁÄ»×ø±ê
+			// è®¡ç®—çª—å£å±…ä¸­çš„å±å¹•åæ ‡
 			INT posX = (GetSystemMetrics(SM_CXSCREEN) - rtWnd.right - rtWnd.left) / 2;
 			INT posY = (GetSystemMetrics(SM_CYSCREEN) - rtWnd.bottom - rtWnd.top) / 2;
 
@@ -341,74 +341,74 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 			}
 		}
 
-		//2¡¢Ê¹ÓÃWIC´´½¨²¢¼ÓÔØÒ»¸öÍ¼Æ¬£¬²¢×ª»»ÎªDXGI¼æÈİµÄ¸ñÊ½
+		//2ã€ä½¿ç”¨WICåˆ›å»ºå¹¶åŠ è½½ä¸€ä¸ªå›¾ç‰‡ï¼Œå¹¶è½¬æ¢ä¸ºDXGIå…¼å®¹çš„æ ¼å¼
 		{
 			//---------------------------------------------------------------------------------------------
-			//Ê¹ÓÃ´¿COM·½Ê½´´½¨WICÀà³§¶ÔÏó£¬Ò²ÊÇµ÷ÓÃWICµÚÒ»²½Òª×öµÄÊÂÇé
+			//ä½¿ç”¨çº¯COMæ–¹å¼åˆ›å»ºWICç±»å‚å¯¹è±¡ï¼Œä¹Ÿæ˜¯è°ƒç”¨WICç¬¬ä¸€æ­¥è¦åšçš„äº‹æƒ…
 			GRS_THROW_IF_FAILED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&pIWICFactory)));
 
-			//Ê¹ÓÃWICÀà³§¶ÔÏó½Ó¿Ú¼ÓÔØÎÆÀíÍ¼Æ¬£¬²¢µÃµ½Ò»¸öWIC½âÂëÆ÷¶ÔÏó½Ó¿Ú£¬Í¼Æ¬ĞÅÏ¢¾ÍÔÚÕâ¸ö½Ó¿Ú´ú±íµÄ¶ÔÏóÖĞÁË
+			//ä½¿ç”¨WICç±»å‚å¯¹è±¡æ¥å£åŠ è½½çº¹ç†å›¾ç‰‡ï¼Œå¹¶å¾—åˆ°ä¸€ä¸ªWICè§£ç å™¨å¯¹è±¡æ¥å£ï¼Œå›¾ç‰‡ä¿¡æ¯å°±åœ¨è¿™ä¸ªæ¥å£ä»£è¡¨çš„å¯¹è±¡ä¸­äº†
 			WCHAR pszTexcuteFileName[MAX_PATH] = {};
-			StringCchPrintfW(pszTexcuteFileName, MAX_PATH, _T("%sAssets\\bear.jpg"), pszAppPath);
+			StringCchPrintfW(pszTexcuteFileName, MAX_PATH, _T("%sAssets\\pig\\UV.png"), pszAppPath);
 
 			GRS_THROW_IF_FAILED(pIWICFactory->CreateDecoderFromFilename(
-				pszTexcuteFileName,              // ÎÄ¼şÃû
-				NULL,                            // ²»Ö¸¶¨½âÂëÆ÷£¬Ê¹ÓÃÄ¬ÈÏ
-				GENERIC_READ,                    // ·ÃÎÊÈ¨ÏŞ
-				WICDecodeMetadataCacheOnDemand,  // ÈôĞèÒª¾Í»º³åÊı¾İ 
-				&pIWICDecoder                    // ½âÂëÆ÷¶ÔÏó
+				pszTexcuteFileName,              // æ–‡ä»¶å
+				NULL,                            // ä¸æŒ‡å®šè§£ç å™¨ï¼Œä½¿ç”¨é»˜è®¤
+				GENERIC_READ,                    // è®¿é—®æƒé™
+				WICDecodeMetadataCacheOnDemand,  // è‹¥éœ€è¦å°±ç¼“å†²æ•°æ® 
+				&pIWICDecoder                    // è§£ç å™¨å¯¹è±¡
 			));
 
-			// »ñÈ¡µÚÒ»Ö¡Í¼Æ¬(ÒòÎªGIFµÈ¸ñÊ½ÎÄ¼ş¿ÉÄÜ»áÓĞ¶àÖ¡Í¼Æ¬£¬ÆäËûµÄ¸ñÊ½Ò»°ãÖ»ÓĞÒ»Ö¡Í¼Æ¬)
-			// Êµ¼Ê½âÎö³öÀ´µÄÍùÍùÊÇÎ»Í¼¸ñÊ½Êı¾İ
+			// è·å–ç¬¬ä¸€å¸§å›¾ç‰‡(å› ä¸ºGIFç­‰æ ¼å¼æ–‡ä»¶å¯èƒ½ä¼šæœ‰å¤šå¸§å›¾ç‰‡ï¼Œå…¶ä»–çš„æ ¼å¼ä¸€èˆ¬åªæœ‰ä¸€å¸§å›¾ç‰‡)
+			// å®é™…è§£æå‡ºæ¥çš„å¾€å¾€æ˜¯ä½å›¾æ ¼å¼æ•°æ®
 			GRS_THROW_IF_FAILED(pIWICDecoder->GetFrame(0, &pIWICFrame));
 
 			WICPixelFormatGUID wpf = {};
-			//»ñÈ¡WICÍ¼Æ¬¸ñÊ½
+			//è·å–WICå›¾ç‰‡æ ¼å¼
 			GRS_THROW_IF_FAILED(pIWICFrame->GetPixelFormat(&wpf));
 			GUID tgFormat = {};
 
-			//Í¨¹ıµÚÒ»µÀ×ª»»Ö®ºó»ñÈ¡DXGIµÄµÈ¼Û¸ñÊ½
+			//é€šè¿‡ç¬¬ä¸€é“è½¬æ¢ä¹‹åè·å–DXGIçš„ç­‰ä»·æ ¼å¼
 			if (GetTargetPixelFormat(&wpf, &tgFormat))
 			{
 				stTextureFormat = GetDXGIFormatFromPixelFormat(&tgFormat);
 			}
 
 			if (DXGI_FORMAT_UNKNOWN == stTextureFormat)
-			{// ²»Ö§³ÖµÄÍ¼Æ¬¸ñÊ½ Ä¿Ç°ÍË³öÁËÊÂ 
-			 // Ò»°ã ÔÚÊµ¼ÊµÄÒıÇæµ±ÖĞ¶¼»áÌá¹©ÎÆÀí¸ñÊ½×ª»»¹¤¾ß£¬
-			 // Í¼Æ¬¶¼ĞèÒªÌáÇ°×ª»»ºÃ£¬ËùÒÔ²»»á³öÏÖ²»Ö§³ÖµÄÏÖÏó
+			{// ä¸æ”¯æŒçš„å›¾ç‰‡æ ¼å¼ ç›®å‰é€€å‡ºäº†äº‹ 
+			 // ä¸€èˆ¬ åœ¨å®é™…çš„å¼•æ“å½“ä¸­éƒ½ä¼šæä¾›çº¹ç†æ ¼å¼è½¬æ¢å·¥å…·ï¼Œ
+			 // å›¾ç‰‡éƒ½éœ€è¦æå‰è½¬æ¢å¥½ï¼Œæ‰€ä»¥ä¸ä¼šå‡ºç°ä¸æ”¯æŒçš„ç°è±¡
 				throw CGRSCOMException(S_FALSE);
 			}
 
 			if (!InlineIsEqualGUID(wpf, tgFormat))
-			{// Õâ¸öÅĞ¶ÏºÜÖØÒª£¬Èç¹ûÔ­WIC¸ñÊ½²»ÊÇÖ±½ÓÄÜ×ª»»ÎªDXGI¸ñÊ½µÄÍ¼Æ¬Ê±
-			 // ÎÒÃÇĞèÒª×öµÄ¾ÍÊÇ×ª»»Í¼Æ¬¸ñÊ½ÎªÄÜ¹»Ö±½Ó¶ÔÓ¦DXGI¸ñÊ½µÄĞÎÊ½
-				//´´½¨Í¼Æ¬¸ñÊ½×ª»»Æ÷
+			{// è¿™ä¸ªåˆ¤æ–­å¾ˆé‡è¦ï¼Œå¦‚æœåŸWICæ ¼å¼ä¸æ˜¯ç›´æ¥èƒ½è½¬æ¢ä¸ºDXGIæ ¼å¼çš„å›¾ç‰‡æ—¶
+			 // æˆ‘ä»¬éœ€è¦åšçš„å°±æ˜¯è½¬æ¢å›¾ç‰‡æ ¼å¼ä¸ºèƒ½å¤Ÿç›´æ¥å¯¹åº”DXGIæ ¼å¼çš„å½¢å¼
+				//åˆ›å»ºå›¾ç‰‡æ ¼å¼è½¬æ¢å™¨
 				ComPtr<IWICFormatConverter> pIConverter;
 				GRS_THROW_IF_FAILED(pIWICFactory->CreateFormatConverter(&pIConverter));
 
-				//³õÊ¼»¯Ò»¸öÍ¼Æ¬×ª»»Æ÷£¬Êµ¼ÊÒ²¾ÍÊÇ½«Í¼Æ¬Êı¾İ½øĞĞÁË¸ñÊ½×ª»»
+				//åˆå§‹åŒ–ä¸€ä¸ªå›¾ç‰‡è½¬æ¢å™¨ï¼Œå®é™…ä¹Ÿå°±æ˜¯å°†å›¾ç‰‡æ•°æ®è¿›è¡Œäº†æ ¼å¼è½¬æ¢
 				GRS_THROW_IF_FAILED(pIConverter->Initialize(
-					pIWICFrame.Get(),                // ÊäÈëÔ­Í¼Æ¬Êı¾İ
-					tgFormat,						 // Ö¸¶¨´ı×ª»»µÄÄ¿±ê¸ñÊ½
-					WICBitmapDitherTypeNone,         // Ö¸¶¨Î»Í¼ÊÇ·ñÓĞµ÷É«°å£¬ÏÖ´ú¶¼ÊÇÕæ²ÊÎ»Í¼£¬²»ÓÃµ÷É«°å£¬ËùÒÔÎªNone
-					NULL,                            // Ö¸¶¨µ÷É«°åÖ¸Õë
-					0.f,                             // Ö¸¶¨Alpha·§Öµ
-					WICBitmapPaletteTypeCustom       // µ÷É«°åÀàĞÍ£¬Êµ¼ÊÃ»ÓĞÊ¹ÓÃ£¬ËùÒÔÖ¸¶¨ÎªCustom
+					pIWICFrame.Get(),                // è¾“å…¥åŸå›¾ç‰‡æ•°æ®
+					tgFormat,						 // æŒ‡å®šå¾…è½¬æ¢çš„ç›®æ ‡æ ¼å¼
+					WICBitmapDitherTypeNone,         // æŒ‡å®šä½å›¾æ˜¯å¦æœ‰è°ƒè‰²æ¿ï¼Œç°ä»£éƒ½æ˜¯çœŸå½©ä½å›¾ï¼Œä¸ç”¨è°ƒè‰²æ¿ï¼Œæ‰€ä»¥ä¸ºNone
+					NULL,                            // æŒ‡å®šè°ƒè‰²æ¿æŒ‡é’ˆ
+					0.f,                             // æŒ‡å®šAlphaé˜€å€¼
+					WICBitmapPaletteTypeCustom       // è°ƒè‰²æ¿ç±»å‹ï¼Œå®é™…æ²¡æœ‰ä½¿ç”¨ï¼Œæ‰€ä»¥æŒ‡å®šä¸ºCustom
 				));
-				// µ÷ÓÃQueryInterface·½·¨»ñµÃ¶ÔÏóµÄÎ»Í¼Êı¾İÔ´½Ó¿Ú
+				// è°ƒç”¨QueryInterfaceæ–¹æ³•è·å¾—å¯¹è±¡çš„ä½å›¾æ•°æ®æºæ¥å£
 				GRS_THROW_IF_FAILED(pIConverter.As(&pIBMP));
 			}
 			else
 			{
-				//Í¼Æ¬Êı¾İ¸ñÊ½²»ĞèÒª×ª»»£¬Ö±½Ó»ñÈ¡ÆäÎ»Í¼Êı¾İÔ´½Ó¿Ú
+				//å›¾ç‰‡æ•°æ®æ ¼å¼ä¸éœ€è¦è½¬æ¢ï¼Œç›´æ¥è·å–å…¶ä½å›¾æ•°æ®æºæ¥å£
 				GRS_THROW_IF_FAILED(pIWICFrame.As(&pIBMP));
 			}
-			//»ñµÃÍ¼Æ¬´óĞ¡£¨µ¥Î»£ºÏñËØ£©
+			//è·å¾—å›¾ç‰‡å¤§å°ï¼ˆå•ä½ï¼šåƒç´ ï¼‰
 			GRS_THROW_IF_FAILED(pIBMP->GetSize(&nTextureW, &nTextureH));
 
-			//»ñÈ¡Í¼Æ¬ÏñËØµÄÎ»´óĞ¡µÄBPP£¨Bits Per Pixel£©ĞÅÏ¢£¬ÓÃÒÔ¼ÆËãÍ¼Æ¬ĞĞÊı¾İµÄÕæÊµ´óĞ¡£¨µ¥Î»£º×Ö½Ú£©
+			//è·å–å›¾ç‰‡åƒç´ çš„ä½å¤§å°çš„BPPï¼ˆBits Per Pixelï¼‰ä¿¡æ¯ï¼Œç”¨ä»¥è®¡ç®—å›¾ç‰‡è¡Œæ•°æ®çš„çœŸå®å¤§å°ï¼ˆå•ä½ï¼šå­—èŠ‚ï¼‰
 			ComPtr<IWICComponentInfo> pIWICmntinfo;
 			GRS_THROW_IF_FAILED(pIWICFactory->CreateComponentInfo(tgFormat, pIWICmntinfo.GetAddressOf()));
 
@@ -423,34 +423,34 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 			ComPtr<IWICPixelFormatInfo> pIWICPixelinfo;
 			GRS_THROW_IF_FAILED(pIWICmntinfo.As(&pIWICPixelinfo));
 
-			// µ½ÕâÀïÖÕÓÚ¿ÉÒÔµÃµ½BPPÁË£¬ÕâÒ²ÊÇÎÒ¿´µÄ±È½ÏÍÂÑªµÄµØ·½£¬ÎªÁËBPP¾ÓÈ»ÈÄÁËÕâÃ´¶à»·½Ú
+			// åˆ°è¿™é‡Œç»ˆäºå¯ä»¥å¾—åˆ°BPPäº†ï¼Œè¿™ä¹Ÿæ˜¯æˆ‘çœ‹çš„æ¯”è¾ƒåè¡€çš„åœ°æ–¹ï¼Œä¸ºäº†BPPå±…ç„¶é¥¶äº†è¿™ä¹ˆå¤šç¯èŠ‚
 			GRS_THROW_IF_FAILED(pIWICPixelinfo->GetBitsPerPixel(&nBPP));
 
-			// ¼ÆËãÍ¼Æ¬Êµ¼ÊµÄĞĞ´óĞ¡£¨µ¥Î»£º×Ö½Ú£©£¬ÕâÀïÊ¹ÓÃÁËÒ»¸öÉÏÈ¡Õû³ı·¨¼´£¨A+B-1£©/B £¬
-			// ÕâÔø¾­±»´«ËµÊÇÎ¢ÈíµÄÃæÊÔÌâ,Ï£ÍûÄãÒÑ¾­¶ÔËüÁËÈçÖ¸ÕÆ
+			// è®¡ç®—å›¾ç‰‡å®é™…çš„è¡Œå¤§å°ï¼ˆå•ä½ï¼šå­—èŠ‚ï¼‰ï¼Œè¿™é‡Œä½¿ç”¨äº†ä¸€ä¸ªä¸Šå–æ•´é™¤æ³•å³ï¼ˆA+B-1ï¼‰/B ï¼Œ
+			// è¿™æ›¾ç»è¢«ä¼ è¯´æ˜¯å¾®è½¯çš„é¢è¯•é¢˜,å¸Œæœ›ä½ å·²ç»å¯¹å®ƒäº†å¦‚æŒ‡æŒ
 			nPicRowPitch = GRS_UPPER_DIV(uint64_t(nTextureW) * uint64_t(nBPP), 8);
 		}
 
-		//3¡¢´ò¿ªÏÔÊ¾×ÓÏµÍ³µÄµ÷ÊÔÖ§³Ö
+		//3ã€æ‰“å¼€æ˜¾ç¤ºå­ç³»ç»Ÿçš„è°ƒè¯•æ”¯æŒ
 		{
 #if defined(_DEBUG)
 			ComPtr<ID3D12Debug> debugController;
 			if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debugController))))
 			{
 				debugController->EnableDebugLayer();
-				// ´ò¿ª¸½¼ÓµÄµ÷ÊÔÖ§³Ö
+				// æ‰“å¼€é™„åŠ çš„è°ƒè¯•æ”¯æŒ
 				nDXGIFactoryFlags |= DXGI_CREATE_FACTORY_DEBUG;
 			}
 #endif
 		}
 
-		//4¡¢´´½¨DXGI Factory¶ÔÏó
+		//4ã€åˆ›å»ºDXGI Factoryå¯¹è±¡
 		{
 			GRS_THROW_IF_FAILED(CreateDXGIFactory2(nDXGIFactoryFlags, IID_PPV_ARGS(&pIDXGIFactory5)));
 		}
 
-		//5¡¢Ã¶¾ÙÊÊÅäÆ÷´´½¨Éè±¸
-		{//Ñ¡ÔñNUMA¼Ü¹¹µÄ¶ÀÏÔÀ´´´½¨3DÉè±¸¶ÔÏó,ÔİÊ±ÏÈ²»Ö§³Ö¼¯ÏÔÁË£¬µ±È»Äã¿ÉÒÔĞŞ¸ÄÕâĞ©ĞĞÎª
+		//5ã€æšä¸¾é€‚é…å™¨åˆ›å»ºè®¾å¤‡
+		{//é€‰æ‹©NUMAæ¶æ„çš„ç‹¬æ˜¾æ¥åˆ›å»º3Dè®¾å¤‡å¯¹è±¡,æš‚æ—¶å…ˆä¸æ”¯æŒé›†æ˜¾äº†ï¼Œå½“ç„¶ä½ å¯ä»¥ä¿®æ”¹è¿™äº›è¡Œä¸º
 			DXGI_ADAPTER_DESC1 stAdapterDesc = {};
 			D3D12_FEATURE_DATA_ARCHITECTURE stArchitecture = {};
 			for (UINT adapterIndex = 0; DXGI_ERROR_NOT_FOUND != pIDXGIFactory5->EnumAdapters1(adapterIndex, &pIAdapter1); ++adapterIndex)
@@ -458,7 +458,7 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 				pIAdapter1->GetDesc1(&stAdapterDesc);
 
 				if (stAdapterDesc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE)
-				{//Ìø¹ıÈí¼şĞéÄâÊÊÅäÆ÷Éè±¸
+				{//è·³è¿‡è½¯ä»¶è™šæ‹Ÿé€‚é…å™¨è®¾å¤‡
 					continue;
 				}
 
@@ -466,7 +466,7 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 				GRS_THROW_IF_FAILED(pID3D12Device4->CheckFeatureSupport(D3D12_FEATURE_ARCHITECTURE
 					, &stArchitecture, sizeof(D3D12_FEATURE_DATA_ARCHITECTURE)));
 
-				if ( !stArchitecture.UMA )
+				if ( stArchitecture.UMA )
 				{
 					break;
 				}
@@ -476,7 +476,7 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 
 			//---------------------------------------------------------------------------------------------
 			if (nullptr == pID3D12Device4.Get())
-			{// ¿ÉÁ¯µÄ»úÆ÷ÉÏ¾ÓÈ»Ã»ÓĞ¶ÀÏÔ »¹ÊÇÏÈÍË³öÁËÊÂ 
+			{// å¯æ€œçš„æœºå™¨ä¸Šå±…ç„¶æ²¡æœ‰ç‹¬æ˜¾ è¿˜æ˜¯å…ˆé€€å‡ºäº†äº‹ 
 				throw CGRSCOMException(E_FAIL);
 			}
 
@@ -490,30 +490,30 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 				, stAdapterDesc.Description);
 			::SetWindowText(hWnd, pszWndTitle);
 
-			//µÃµ½Ã¿¸öÃèÊö·ûÔªËØµÄ´óĞ¡
+			//å¾—åˆ°æ¯ä¸ªæè¿°ç¬¦å…ƒç´ çš„å¤§å°
 			nRTVDescriptorSize = pID3D12Device4->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 			nSRVDescriptorSize = pID3D12Device4->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 			nSamplerDescriptorSize = pID3D12Device4->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
 		}
 
-		//6¡¢´´½¨Ö±½ÓÃüÁî¶ÓÁĞ
+		//6ã€åˆ›å»ºç›´æ¥å‘½ä»¤é˜Ÿåˆ—
 		{
 			D3D12_COMMAND_QUEUE_DESC stQueueDesc = {};
 			stQueueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
 			GRS_THROW_IF_FAILED(pID3D12Device4->CreateCommandQueue(&stQueueDesc, IID_PPV_ARGS(&pICMDQueue)));
 		}
 
-		//7¡¢´´½¨Ö±½ÓÃüÁîÁĞ±í
+		//7ã€åˆ›å»ºç›´æ¥å‘½ä»¤åˆ—è¡¨
 		{
 			GRS_THROW_IF_FAILED(pID3D12Device4->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT
 				, IID_PPV_ARGS(&pICMDAlloc)));
-			//´´½¨Ö±½ÓÃüÁîÁĞ±í£¬ÔÚÆäÉÏ¿ÉÒÔÖ´ĞĞ¼¸ºõËùÓĞµÄÒıÇæÃüÁî£¨3DÍ¼ĞÎÒıÇæ¡¢¼ÆËãÒıÇæ¡¢¸´ÖÆÒıÇæµÈ£©
-			//×¢Òâ³õÊ¼Ê±²¢Ã»ÓĞÊ¹ÓÃPSO¶ÔÏó£¬´ËÊ±ÆäÊµÕâ¸öÃüÁîÁĞ±íÒÀÈ»¿ÉÒÔ¼ÇÂ¼ÃüÁî
+			//åˆ›å»ºç›´æ¥å‘½ä»¤åˆ—è¡¨ï¼Œåœ¨å…¶ä¸Šå¯ä»¥æ‰§è¡Œå‡ ä¹æ‰€æœ‰çš„å¼•æ“å‘½ä»¤ï¼ˆ3Då›¾å½¢å¼•æ“ã€è®¡ç®—å¼•æ“ã€å¤åˆ¶å¼•æ“ç­‰ï¼‰
+			//æ³¨æ„åˆå§‹æ—¶å¹¶æ²¡æœ‰ä½¿ç”¨PSOå¯¹è±¡ï¼Œæ­¤æ—¶å…¶å®è¿™ä¸ªå‘½ä»¤åˆ—è¡¨ä¾ç„¶å¯ä»¥è®°å½•å‘½ä»¤
 			GRS_THROW_IF_FAILED(pID3D12Device4->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT
 				, pICMDAlloc.Get(), nullptr, IID_PPV_ARGS(&pICMDList)));
 		}
 
-		//8¡¢´´½¨½»»»Á´
+		//8ã€åˆ›å»ºäº¤æ¢é“¾
 		{
 			DXGI_SWAP_CHAIN_DESC1 stSwapChainDesc = {};
 			stSwapChainDesc.BufferCount = nFrameBackBufCount;
@@ -533,11 +533,11 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 				&pISwapChain1
 			));
 
-			//×¢Òâ´Ë´¦Ê¹ÓÃÁË¸ß°æ±¾µÄSwapChain½Ó¿ÚµÄº¯Êı
+			//æ³¨æ„æ­¤å¤„ä½¿ç”¨äº†é«˜ç‰ˆæœ¬çš„SwapChainæ¥å£çš„å‡½æ•°
 			GRS_THROW_IF_FAILED(pISwapChain1.As(&pISwapChain3));
 			nFrameIndex = pISwapChain3->GetCurrentBackBufferIndex();
 
-			//´´½¨RTV(äÖÈ¾Ä¿±êÊÓÍ¼)ÃèÊö·û¶Ñ(ÕâÀï¶ÑµÄº¬ÒåÓ¦µ±Àí½âÎªÊı×é»òÕß¹Ì¶¨´óĞ¡ÔªËØµÄ¹Ì¶¨´óĞ¡ÏÔ´æ³Ø)
+			//åˆ›å»ºRTV(æ¸²æŸ“ç›®æ ‡è§†å›¾)æè¿°ç¬¦å †(è¿™é‡Œå †çš„å«ä¹‰åº”å½“ç†è§£ä¸ºæ•°ç»„æˆ–è€…å›ºå®šå¤§å°å…ƒç´ çš„å›ºå®šå¤§å°æ˜¾å­˜æ± )
 			D3D12_DESCRIPTOR_HEAP_DESC stRTVHeapDesc = {};
 			stRTVHeapDesc.NumDescriptors = nFrameBackBufCount;
 			stRTVHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
@@ -548,19 +548,19 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 			//---------------------------------------------------------------------------------------------
 			D3D12_CPU_DESCRIPTOR_HANDLE stRTVHandle = pIRTVHeap->GetCPUDescriptorHandleForHeapStart();
 			for (UINT i = 0; i < nFrameBackBufCount; i++)
-			{//Õâ¸öÑ­»·±©Â©ÁËÃèÊö·û¶ÑÊµ¼ÊÉÏÊÇ¸öÊı×éµÄ±¾ÖÊ
+			{//è¿™ä¸ªå¾ªç¯æš´æ¼äº†æè¿°ç¬¦å †å®é™…ä¸Šæ˜¯ä¸ªæ•°ç»„çš„æœ¬è´¨
 				GRS_THROW_IF_FAILED(pISwapChain3->GetBuffer(i, IID_PPV_ARGS(&pIARenderTargets[i])));
 				pID3D12Device4->CreateRenderTargetView(pIARenderTargets[i].Get(), nullptr, stRTVHandle);
 				stRTVHandle.ptr += nRTVDescriptorSize;
 			}
 
-			// ¹Ø±ÕALT+ENTER¼üÇĞ»»È«ÆÁµÄ¹¦ÄÜ£¬ÒòÎªÎÒÃÇÃ»ÓĞÊµÏÖOnSize´¦Àí£¬ËùÒÔÏÈ¹Ø±Õ
+			// å…³é—­ALT+ENTERé”®åˆ‡æ¢å…¨å±çš„åŠŸèƒ½ï¼Œå› ä¸ºæˆ‘ä»¬æ²¡æœ‰å®ç°OnSizeå¤„ç†ï¼Œæ‰€ä»¥å…ˆå…³é—­
 			GRS_THROW_IF_FAILED(pIDXGIFactory5->MakeWindowAssociation(hWnd, DXGI_MWA_NO_ALT_ENTER));
 		}
 
-		//9¡¢´´½¨ SRV CBV Sample¶Ñ
+		//9ã€åˆ›å»º SRV CBV Sampleå †
 		{
-			//ÎÒÃÇ½«ÎÆÀíÊÓÍ¼ÃèÊö·ûºÍCBVÃèÊö·û·ÅÔÚÒ»¸öÃèÊö·û¶ÑÉÏ
+			//æˆ‘ä»¬å°†çº¹ç†è§†å›¾æè¿°ç¬¦å’ŒCBVæè¿°ç¬¦æ”¾åœ¨ä¸€ä¸ªæè¿°ç¬¦å †ä¸Š
 			D3D12_DESCRIPTOR_HEAP_DESC stSRVHeapDesc = {};
 			stSRVHeapDesc.NumDescriptors = 2; //1 SRV + 1 CBV
 			stSRVHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
@@ -576,16 +576,16 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 			
 		}
 
-		//10¡¢´´½¨¸ùÇ©Ãû
+		//10ã€åˆ›å»ºæ ¹ç­¾å
 		{
 			D3D12_FEATURE_DATA_ROOT_SIGNATURE stFeatureData = {};
-			// ¼ì²âÊÇ·ñÖ§³ÖV1.1°æ±¾µÄ¸ùÇ©Ãû
+			// æ£€æµ‹æ˜¯å¦æ”¯æŒV1.1ç‰ˆæœ¬çš„æ ¹ç­¾å
 			stFeatureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_1;
 			if (FAILED(pID3D12Device4->CheckFeatureSupport(D3D12_FEATURE_ROOT_SIGNATURE, &stFeatureData, sizeof(stFeatureData))))
-			{// 1.0°æ Ö±½Ó¶ªÒì³£ÍË³öÁË
+			{// 1.0ç‰ˆ ç›´æ¥ä¸¢å¼‚å¸¸é€€å‡ºäº†
 				GRS_THROW_IF_FAILED(E_NOTIMPL);
 			}
-			// ÔÚGPUÉÏÖ´ĞĞSetGraphicsRootDescriptorTableºó£¬ÎÒÃÇ²»ĞŞ¸ÄÃüÁîÁĞ±íÖĞµÄSRV£¬Òò´ËÎÒÃÇ¿ÉÒÔÊ¹ÓÃÄ¬ÈÏRangĞĞÎª:
+			// åœ¨GPUä¸Šæ‰§è¡ŒSetGraphicsRootDescriptorTableåï¼Œæˆ‘ä»¬ä¸ä¿®æ”¹å‘½ä»¤åˆ—è¡¨ä¸­çš„SRVï¼Œå› æ­¤æˆ‘ä»¬å¯ä»¥ä½¿ç”¨é»˜è®¤Rangè¡Œä¸º:
 			// D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC_WHILE_SET_AT_EXECUTE
 			D3D12_DESCRIPTOR_RANGE1 stDSPRanges[3] = {};
 
@@ -613,17 +613,17 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 			D3D12_ROOT_PARAMETER1 stRootParameters[3] = {};
 
 			stRootParameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-			stRootParameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;	//SRV½öPS¿É¼û
+			stRootParameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;	//SRVä»…PSå¯è§
 			stRootParameters[0].DescriptorTable.NumDescriptorRanges = 1;
 			stRootParameters[0].DescriptorTable.pDescriptorRanges = &stDSPRanges[0];
 
 			stRootParameters[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-			stRootParameters[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;		//CBVÊÇËùÓĞShader¿É¼û
+			stRootParameters[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;		//CBVæ˜¯æ‰€æœ‰Shaderå¯è§
 			stRootParameters[1].DescriptorTable.NumDescriptorRanges = 1;
 			stRootParameters[1].DescriptorTable.pDescriptorRanges = &stDSPRanges[1];
 
 			stRootParameters[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-			stRootParameters[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;	//SAMPLE½öPS¿É¼û
+			stRootParameters[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;	//SAMPLEä»…PSå¯è§
 			stRootParameters[2].DescriptorTable.NumDescriptorRanges = 1;
 			stRootParameters[2].DescriptorTable.pDescriptorRanges = &stDSPRanges[2];
 
@@ -648,7 +648,7 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 				, IID_PPV_ARGS(&pIRootSignature)));
 		}
 
-		//11¡¢±àÒëShader´´½¨äÖÈ¾¹ÜÏß×´Ì¬¶ÔÏó
+		//11ã€ç¼–è¯‘Shaderåˆ›å»ºæ¸²æŸ“ç®¡çº¿çŠ¶æ€å¯¹è±¡
 		{
 
 #if defined(_DEBUG)
@@ -657,7 +657,7 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 #else
 			UINT compileFlags = 0;
 #endif
-			//±àÒëÎªĞĞ¾ØÕóĞÎÊ½	   
+			//ç¼–è¯‘ä¸ºè¡ŒçŸ©é˜µå½¢å¼	   
 			compileFlags |= D3DCOMPILE_PACK_MATRIX_ROW_MAJOR;
 
 			TCHAR pszShaderFileName[MAX_PATH] = {};
@@ -668,7 +668,7 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 			GRS_THROW_IF_FAILED(D3DCompileFromFile(pszShaderFileName, nullptr, nullptr
 				, "PSMain", "ps_5_0", compileFlags, 0, &pIBlobPixelShader, nullptr));
 
-			// ÎÒÃÇ¶àÌí¼ÓÁËÒ»¸ö·¨ÏßµÄ¶¨Òå£¬µ«Ä¿Ç°ShaderÖĞÎÒÃÇ²¢Ã»ÓĞÊ¹ÓÃ
+			// æˆ‘ä»¬å¤šæ·»åŠ äº†ä¸€ä¸ªæ³•çº¿çš„å®šä¹‰ï¼Œä½†ç›®å‰Shaderä¸­æˆ‘ä»¬å¹¶æ²¡æœ‰ä½¿ç”¨
 			D3D12_INPUT_ELEMENT_DESC stInputElementDescs[] =
 			{
 				{ "POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
@@ -676,7 +676,7 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 				{ "NORMAL", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
 			};
 
-			// ´´½¨ graphics pipeline state object (PSO)¶ÔÏó
+			// åˆ›å»º graphics pipeline state object (PSO)å¯¹è±¡
 			D3D12_GRAPHICS_PIPELINE_STATE_DESC stPSODesc = {};
 			stPSODesc.InputLayout = { stInputElementDescs, _countof(stInputElementDescs) };
 
@@ -705,24 +705,24 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 				, IID_PPV_ARGS(&pIPipelineState)));
 		}
 
-		//12¡¢´´½¨ÎÆÀíµÄÄ¬ÈÏ¶Ñ
+		//12ã€åˆ›å»ºçº¹ç†çš„é»˜è®¤å †
 		{
 			D3D12_HEAP_DESC stTextureHeapDesc = {};
-			//Îª¶ÑÖ¸¶¨ÎÆÀíÍ¼Æ¬ÖÁÉÙ2±¶´óĞ¡µÄ¿Õ¼ä£¬ÕâÀïÃ»ÓĞÏêÏ¸È¥¼ÆËãÁË£¬Ö»ÊÇÖ¸¶¨ÁËÒ»¸ö×ã¹»´óµÄ¿Õ¼ä£¬¹»·ÅÎÆÀí¾ÍĞĞ
-			//Êµ¼ÊÓ¦ÓÃÖĞÒ²ÊÇÒª×ÛºÏ¿¼ÂÇ·ÖÅä¶ÑµÄ´óĞ¡£¬ÒÔ±ã¿ÉÒÔÖØÓÃ¶Ñ
+			//ä¸ºå †æŒ‡å®šçº¹ç†å›¾ç‰‡è‡³å°‘2å€å¤§å°çš„ç©ºé—´ï¼Œè¿™é‡Œæ²¡æœ‰è¯¦ç»†å»è®¡ç®—äº†ï¼Œåªæ˜¯æŒ‡å®šäº†ä¸€ä¸ªè¶³å¤Ÿå¤§çš„ç©ºé—´ï¼Œå¤Ÿæ”¾çº¹ç†å°±è¡Œ
+			//å®é™…åº”ç”¨ä¸­ä¹Ÿæ˜¯è¦ç»¼åˆè€ƒè™‘åˆ†é…å †çš„å¤§å°ï¼Œä»¥ä¾¿å¯ä»¥é‡ç”¨å †
 			stTextureHeapDesc.SizeInBytes = GRS_UPPER(2 * nPicRowPitch * nTextureH, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT);
-			//Ö¸¶¨¶ÑµÄ¶ÔÆë·½Ê½£¬ÕâÀïÊ¹ÓÃÁËÄ¬ÈÏµÄ64K±ß½ç¶ÔÆë£¬ÒòÎªÎÒÃÇÔİÊ±²»ĞèÒªMSAAÖ§³Ö
+			//æŒ‡å®šå †çš„å¯¹é½æ–¹å¼ï¼Œè¿™é‡Œä½¿ç”¨äº†é»˜è®¤çš„64Kè¾¹ç•Œå¯¹é½ï¼Œå› ä¸ºæˆ‘ä»¬æš‚æ—¶ä¸éœ€è¦MSAAæ”¯æŒ
 			stTextureHeapDesc.Alignment = D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT;
-			stTextureHeapDesc.Properties.Type = D3D12_HEAP_TYPE_DEFAULT;		//Ä¬ÈÏ¶ÑÀàĞÍ
+			stTextureHeapDesc.Properties.Type = D3D12_HEAP_TYPE_DEFAULT;		//é»˜è®¤å †ç±»å‹
 			stTextureHeapDesc.Properties.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
 			stTextureHeapDesc.Properties.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
-			//¾Ü¾øäÖÈ¾Ä¿±êÎÆÀí¡¢¾Ü¾øÉî¶ÈÀ¯°åÎÆÀí£¬Êµ¼Ê¾ÍÖ»ÊÇÓÃÀ´°Ú·ÅÆÕÍ¨ÎÆÀí
+			//æ‹’ç»æ¸²æŸ“ç›®æ ‡çº¹ç†ã€æ‹’ç»æ·±åº¦èœ¡æ¿çº¹ç†ï¼Œå®é™…å°±åªæ˜¯ç”¨æ¥æ‘†æ”¾æ™®é€šçº¹ç†
 			stTextureHeapDesc.Flags = D3D12_HEAP_FLAG_DENY_RT_DS_TEXTURES | D3D12_HEAP_FLAG_DENY_BUFFERS;
 
 			GRS_THROW_IF_FAILED(pID3D12Device4->CreateHeap(&stTextureHeapDesc, IID_PPV_ARGS(&pITextureHeap)));
 		}
 
-		//13¡¢´´½¨2DÎÆÀí
+		//13ã€åˆ›å»º2Dçº¹ç†
 		{
 			stTextureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
 			stTextureDesc.MipLevels = 1;
@@ -735,43 +735,43 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 			stTextureDesc.SampleDesc.Quality = 0;
 
 			//-----------------------------------------------------------------------------------------------------------
-			//Ê¹ÓÃ¡°¶¨Î»·½Ê½¡±À´´´½¨ÎÆÀí£¬×¢ÒâÏÂÃæÕâ¸öµ÷ÓÃÄÚ²¿Êµ¼ÊÒÑ¾­Ã»ÓĞ´æ´¢·ÖÅäºÍÊÍ·ÅµÄÊµ¼Ê²Ù×÷ÁË£¬ËùÒÔĞÔÄÜºÜ¸ß
-			//Í¬Ê±¿ÉÒÔÔÚÕâ¸ö¶ÑÉÏ·´¸´µ÷ÓÃCreatePlacedResourceÀ´´´½¨²»Í¬µÄÎÆÀí£¬µ±È»Ç°ÌáÊÇËüÃÇ²»ÔÚ±»Ê¹ÓÃµÄÊ±ºò£¬²Å¿¼ÂÇ
-			//ÖØÓÃ¶Ñ
+			//ä½¿ç”¨â€œå®šä½æ–¹å¼â€æ¥åˆ›å»ºçº¹ç†ï¼Œæ³¨æ„ä¸‹é¢è¿™ä¸ªè°ƒç”¨å†…éƒ¨å®é™…å·²ç»æ²¡æœ‰å­˜å‚¨åˆ†é…å’Œé‡Šæ”¾çš„å®é™…æ“ä½œäº†ï¼Œæ‰€ä»¥æ€§èƒ½å¾ˆé«˜
+			//åŒæ—¶å¯ä»¥åœ¨è¿™ä¸ªå †ä¸Šåå¤è°ƒç”¨CreatePlacedResourceæ¥åˆ›å»ºä¸åŒçš„çº¹ç†ï¼Œå½“ç„¶å‰ææ˜¯å®ƒä»¬ä¸åœ¨è¢«ä½¿ç”¨çš„æ—¶å€™ï¼Œæ‰è€ƒè™‘
+			//é‡ç”¨å †
 			GRS_THROW_IF_FAILED(pID3D12Device4->CreatePlacedResource(
 				pITextureHeap.Get()
 				, 0
-				, &stTextureDesc				//¿ÉÒÔÊ¹ÓÃCD3DX12_RESOURCE_DESC::Tex2DÀ´¼ò»¯½á¹¹ÌåµÄ³õÊ¼»¯
+				, &stTextureDesc				//å¯ä»¥ä½¿ç”¨CD3DX12_RESOURCE_DESC::Tex2Dæ¥ç®€åŒ–ç»“æ„ä½“çš„åˆå§‹åŒ–
 				, D3D12_RESOURCE_STATE_COPY_DEST
 				, nullptr
 				, IID_PPV_ARGS(&pITexture)));
 			//-----------------------------------------------------------------------------------------------------------
 
-			//»ñÈ¡ÉÏ´«¶Ñ×ÊÔ´»º³åµÄ´óĞ¡£¬Õâ¸ö³ß´çÍ¨³£´óÓÚÊµ¼ÊÍ¼Æ¬µÄ³ß´ç
+			//è·å–ä¸Šä¼ å †èµ„æºç¼“å†²çš„å¤§å°ï¼Œè¿™ä¸ªå°ºå¯¸é€šå¸¸å¤§äºå®é™…å›¾ç‰‡çš„å°ºå¯¸
 			D3D12_RESOURCE_DESC stCopyDstDesc = pITexture->GetDesc();
 			n64UploadBufferSize = 0;
 			pID3D12Device4->GetCopyableFootprints(&stCopyDstDesc, 0, 1, 0, nullptr, nullptr, nullptr, &n64UploadBufferSize);
 		}
 
-		//14¡¢´´½¨ÉÏ´«¶Ñ
+		//14ã€åˆ›å»ºä¸Šä¼ å †
 		{
 			//-----------------------------------------------------------------------------------------------------------
 			D3D12_HEAP_DESC stUploadHeapDesc = {  };
-			//³ß´çÒÀÈ»ÊÇÊµ¼ÊÎÆÀíÊı¾İ´óĞ¡µÄ2±¶²¢64K±ß½ç¶ÔÆë´óĞ¡
+			//å°ºå¯¸ä¾ç„¶æ˜¯å®é™…çº¹ç†æ•°æ®å¤§å°çš„2å€å¹¶64Kè¾¹ç•Œå¯¹é½å¤§å°
 			stUploadHeapDesc.SizeInBytes = GRS_UPPER(2 * n64UploadBufferSize, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT);
-			//×¢ÒâÉÏ´«¶Ñ¿Ï¶¨ÊÇBufferÀàĞÍ£¬¿ÉÒÔ²»Ö¸¶¨¶ÔÆë·½Ê½£¬ÆäÄ¬ÈÏÊÇ64k±ß½ç¶ÔÆë
+			//æ³¨æ„ä¸Šä¼ å †è‚¯å®šæ˜¯Bufferç±»å‹ï¼Œå¯ä»¥ä¸æŒ‡å®šå¯¹é½æ–¹å¼ï¼Œå…¶é»˜è®¤æ˜¯64kè¾¹ç•Œå¯¹é½
 			stUploadHeapDesc.Alignment = 0;
-			stUploadHeapDesc.Properties.Type = D3D12_HEAP_TYPE_UPLOAD;		//ÉÏ´«¶ÑÀàĞÍ
+			stUploadHeapDesc.Properties.Type = D3D12_HEAP_TYPE_UPLOAD;		//ä¸Šä¼ å †ç±»å‹
 			stUploadHeapDesc.Properties.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
 			stUploadHeapDesc.Properties.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
-			//ÉÏ´«¶Ñ¾ÍÊÇ»º³å£¬¿ÉÒÔ°Ú·ÅÈÎÒâÊı¾İ
+			//ä¸Šä¼ å †å°±æ˜¯ç¼“å†²ï¼Œå¯ä»¥æ‘†æ”¾ä»»æ„æ•°æ®
 			stUploadHeapDesc.Flags = D3D12_HEAP_FLAG_ALLOW_ONLY_BUFFERS;
 
 			GRS_THROW_IF_FAILED(pID3D12Device4->CreateHeap(&stUploadHeapDesc, IID_PPV_ARGS(&pIUploadHeap)));
 			//-----------------------------------------------------------------------------------------------------------
 		}
 
-		//15¡¢Ê¹ÓÃ¡°¶¨Î»·½Ê½¡±´´½¨ÓÃÓÚÉÏ´«ÎÆÀíÊı¾İµÄ»º³å×ÊÔ´
+		//15ã€ä½¿ç”¨â€œå®šä½æ–¹å¼â€åˆ›å»ºç”¨äºä¸Šä¼ çº¹ç†æ•°æ®çš„ç¼“å†²èµ„æº
 		{
 			D3D12_RESOURCE_DESC stUploadResDesc = {};
 			stUploadResDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
@@ -794,23 +794,23 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 				, IID_PPV_ARGS(&pITextureUpload)));
 		}
 
-		//16¡¢¼ÓÔØÍ¼Æ¬Êı¾İÖÁÉÏ´«¶Ñ£¬¼´Íê³ÉµÚÒ»¸öCopy¶¯×÷£¬´Ómemcpyº¯Êı¿ÉÖªÕâÊÇÓÉCPUÍê³ÉµÄ
+		//16ã€åŠ è½½å›¾ç‰‡æ•°æ®è‡³ä¸Šä¼ å †ï¼Œå³å®Œæˆç¬¬ä¸€ä¸ªCopyåŠ¨ä½œï¼Œä»memcpyå‡½æ•°å¯çŸ¥è¿™æ˜¯ç”±CPUå®Œæˆçš„
 		{
-			//°´ÕÕ×ÊÔ´»º³å´óĞ¡À´·ÖÅäÊµ¼ÊÍ¼Æ¬Êı¾İ´æ´¢µÄÄÚ´æ´óĞ¡
+			//æŒ‰ç…§èµ„æºç¼“å†²å¤§å°æ¥åˆ†é…å®é™…å›¾ç‰‡æ•°æ®å­˜å‚¨çš„å†…å­˜å¤§å°
 			void* pbPicData = ::HeapAlloc(::GetProcessHeap(), HEAP_ZERO_MEMORY, n64UploadBufferSize);
 			if (nullptr == pbPicData)
 			{
 				throw CGRSCOMException(HRESULT_FROM_WIN32(GetLastError()));
 			}
 
-			//´ÓÍ¼Æ¬ÖĞ¶ÁÈ¡³öÊı¾İ
+			//ä»å›¾ç‰‡ä¸­è¯»å–å‡ºæ•°æ®
 			GRS_THROW_IF_FAILED(pIBMP->CopyPixels(nullptr
 				, nPicRowPitch
-				, static_cast<UINT>(nPicRowPitch * nTextureH)   //×¢ÒâÕâÀï²ÅÊÇÍ¼Æ¬Êı¾İÕæÊµµÄ´óĞ¡£¬Õâ¸öÖµÍ¨³£Ğ¡ÓÚ»º³åµÄ´óĞ¡
+				, static_cast<UINT>(nPicRowPitch * nTextureH)   //æ³¨æ„è¿™é‡Œæ‰æ˜¯å›¾ç‰‡æ•°æ®çœŸå®çš„å¤§å°ï¼Œè¿™ä¸ªå€¼é€šå¸¸å°äºç¼“å†²çš„å¤§å°
 				, reinterpret_cast<BYTE*>(pbPicData)));
 
-			//{//ÏÂÃæÕâ¶Î´úÂëÀ´×ÔDX12µÄÊ¾Àı£¬Ö±½ÓÍ¨¹ıÌî³ä»º³å»æÖÆÁËÒ»¸öºÚ°×·½¸ñµÄÎÆÀí
-			// //»¹Ô­Õâ¶Î´úÂë£¬È»ºó×¢ÊÍÉÏÃæµÄCopyPixelsµ÷ÓÃ¿ÉÒÔ¿´µ½ºÚ°×·½¸ñÎÆÀíµÄĞ§¹û
+			//{//ä¸‹é¢è¿™æ®µä»£ç æ¥è‡ªDX12çš„ç¤ºä¾‹ï¼Œç›´æ¥é€šè¿‡å¡«å……ç¼“å†²ç»˜åˆ¶äº†ä¸€ä¸ªé»‘ç™½æ–¹æ ¼çš„çº¹ç†
+			// //è¿˜åŸè¿™æ®µä»£ç ï¼Œç„¶åæ³¨é‡Šä¸Šé¢çš„CopyPixelsè°ƒç”¨å¯ä»¥çœ‹åˆ°é»‘ç™½æ–¹æ ¼çº¹ç†çš„æ•ˆæœ
 			//	const UINT rowPitch = nPicRowPitch; //nTextureW * 4; //static_cast<UINT>(n64UploadBufferSize / nTextureH);
 			//	const UINT cellPitch = rowPitch >> 3;		// The width of a cell in the checkboard texture.
 			//	const UINT cellHeight = nTextureW >> 3;	// The height of a cell in the checkerboard texture.
@@ -843,10 +843,10 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 			//	}
 			//}
 
-			//»ñÈ¡ÏòÉÏ´«¶Ñ¿½±´ÎÆÀíÊı¾İµÄÒ»Ğ©ÎÆÀí×ª»»³ß´çĞÅÏ¢
-			//¶ÔÓÚ¸´ÔÓµÄDDSÎÆÀíÕâÊÇ·Ç³£±ØÒªµÄ¹ı³Ì
+			//è·å–å‘ä¸Šä¼ å †æ‹·è´çº¹ç†æ•°æ®çš„ä¸€äº›çº¹ç†è½¬æ¢å°ºå¯¸ä¿¡æ¯
+			//å¯¹äºå¤æ‚çš„DDSçº¹ç†è¿™æ˜¯éå¸¸å¿…è¦çš„è¿‡ç¨‹
 
-			UINT   nNumSubresources = 1u;  //ÎÒÃÇÖ»ÓĞÒ»¸±Í¼Æ¬£¬¼´×Ó×ÊÔ´¸öÊıÎª1
+			UINT   nNumSubresources = 1u;  //æˆ‘ä»¬åªæœ‰ä¸€å‰¯å›¾ç‰‡ï¼Œå³å­èµ„æºä¸ªæ•°ä¸º1
 			UINT   nTextureRowNum = 0u;
 			UINT64 n64TextureRowSizes = 0u;
 			UINT64 n64RequiredSize = 0u;
@@ -862,11 +862,11 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 				, &n64TextureRowSizes
 				, &n64RequiredSize);
 
-			//ÒòÎªÉÏ´«¶ÑÊµ¼Ê¾ÍÊÇCPU´«µİÊı¾İµ½GPUµÄÖĞ½é
-			//ËùÒÔÎÒÃÇ¿ÉÒÔÊ¹ÓÃÊìÏ¤µÄMap·½·¨½«ËüÏÈÓ³Éäµ½CPUÄÚ´æµØÖ·ÖĞ
-			//È»ºóÎÒÃÇ°´ĞĞ½«Êı¾İ¸´ÖÆµ½ÉÏ´«¶ÑÖĞ
-			//ĞèÒª×¢ÒâµÄÊÇÖ®ËùÒÔ°´ĞĞ¿½±´ÊÇÒòÎªGPU×ÊÔ´µÄĞĞ´óĞ¡
-			//ÓëÊµ¼ÊÍ¼Æ¬µÄĞĞ´óĞ¡ÊÇÓĞ²îÒìµÄ,¶şÕßµÄÄÚ´æ±ß½ç¶ÔÆëÒªÇóÊÇ²»Ò»ÑùµÄ
+			//å› ä¸ºä¸Šä¼ å †å®é™…å°±æ˜¯CPUä¼ é€’æ•°æ®åˆ°GPUçš„ä¸­ä»‹
+			//æ‰€ä»¥æˆ‘ä»¬å¯ä»¥ä½¿ç”¨ç†Ÿæ‚‰çš„Mapæ–¹æ³•å°†å®ƒå…ˆæ˜ å°„åˆ°CPUå†…å­˜åœ°å€ä¸­
+			//ç„¶åæˆ‘ä»¬æŒ‰è¡Œå°†æ•°æ®å¤åˆ¶åˆ°ä¸Šä¼ å †ä¸­
+			//éœ€è¦æ³¨æ„çš„æ˜¯ä¹‹æ‰€ä»¥æŒ‰è¡Œæ‹·è´æ˜¯å› ä¸ºGPUèµ„æºçš„è¡Œå¤§å°
+			//ä¸å®é™…å›¾ç‰‡çš„è¡Œå¤§å°æ˜¯æœ‰å·®å¼‚çš„,äºŒè€…çš„å†…å­˜è¾¹ç•Œå¯¹é½è¦æ±‚æ˜¯ä¸ä¸€æ ·çš„
 			BYTE* pData = nullptr;
 			GRS_THROW_IF_FAILED(pITextureUpload->Map(0, NULL, reinterpret_cast<void**>(&pData)));
 
@@ -878,18 +878,18 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 					, pSrcSlice + static_cast<SIZE_T>(nPicRowPitch) * y
 					, nPicRowPitch);
 			}
-			//È¡ÏûÓ³Éä ¶ÔÓÚÒ×±äµÄÊı¾İÈçÃ¿Ö¡µÄ±ä»»¾ØÕóµÈÊı¾İ£¬¿ÉÒÔÈöÀÁ²»ÓÃUnmapÁË£¬
-			//ÈÃËü³£×¤ÄÚ´æ,ÒÔÌá¸ßÕûÌåĞÔÄÜ£¬ÒòÎªÃ¿´ÎMapºÍUnmapÊÇºÜºÄÊ±µÄ²Ù×÷
-			//ÒòÎªÏÖÔÚÆğÂë¶¼ÊÇ64Î»ÏµÍ³ºÍÓ¦ÓÃÁË£¬µØÖ·¿Õ¼äÊÇ×ã¹»µÄ£¬±»³¤ÆÚÕ¼ÓÃ²»»áÓ°ÏìÊ²Ã´
+			//å–æ¶ˆæ˜ å°„ å¯¹äºæ˜“å˜çš„æ•°æ®å¦‚æ¯å¸§çš„å˜æ¢çŸ©é˜µç­‰æ•°æ®ï¼Œå¯ä»¥æ’’æ‡’ä¸ç”¨Unmapäº†ï¼Œ
+			//è®©å®ƒå¸¸é©»å†…å­˜,ä»¥æé«˜æ•´ä½“æ€§èƒ½ï¼Œå› ä¸ºæ¯æ¬¡Mapå’ŒUnmapæ˜¯å¾ˆè€—æ—¶çš„æ“ä½œ
+			//å› ä¸ºç°åœ¨èµ·ç éƒ½æ˜¯64ä½ç³»ç»Ÿå’Œåº”ç”¨äº†ï¼Œåœ°å€ç©ºé—´æ˜¯è¶³å¤Ÿçš„ï¼Œè¢«é•¿æœŸå ç”¨ä¸ä¼šå½±å“ä»€ä¹ˆ
 			pITextureUpload->Unmap(0, NULL);
 
-			//ÊÍ·ÅÍ¼Æ¬Êı¾İ£¬×öÒ»¸ö¸É¾»µÄ³ÌĞòÔ±
+			//é‡Šæ”¾å›¾ç‰‡æ•°æ®ï¼Œåšä¸€ä¸ªå¹²å‡€çš„ç¨‹åºå‘˜
 			::HeapFree(::GetProcessHeap(), 0, pbPicData);
 		}
 
-		//17¡¢ÏòÖ±½ÓÃüÁîÁĞ±í·¢³ö´ÓÉÏ´«¶Ñ¸´ÖÆÎÆÀíÊı¾İµ½Ä¬ÈÏ¶ÑµÄÃüÁî£¬Ö´ĞĞ²¢Í¬²½µÈ´ı£¬¼´Íê³ÉµÚ¶ş¸öCopy¶¯×÷£¬ÓÉGPUÉÏµÄ¸´ÖÆÒıÇæÍê³É
-		//×¢Òâ´ËÊ±Ö±½ÓÃüÁîÁĞ±í»¹Ã»ÓĞ°ó¶¨PSO¶ÔÏó£¬Òò´ËËüÒ²ÊÇ²»ÄÜÖ´ĞĞ3DÍ¼ĞÎÃüÁîµÄ£¬µ«ÊÇ¿ÉÒÔÖ´ĞĞ¸´ÖÆÃüÁî£¬ÒòÎª¸´ÖÆÒıÇæ²»ĞèÒªÊ²Ã´
-		//¶îÍâµÄ×´Ì¬ÉèÖÃÖ®ÀàµÄ²ÎÊı
+		//17ã€å‘ç›´æ¥å‘½ä»¤åˆ—è¡¨å‘å‡ºä»ä¸Šä¼ å †å¤åˆ¶çº¹ç†æ•°æ®åˆ°é»˜è®¤å †çš„å‘½ä»¤ï¼Œæ‰§è¡Œå¹¶åŒæ­¥ç­‰å¾…ï¼Œå³å®Œæˆç¬¬äºŒä¸ªCopyåŠ¨ä½œï¼Œç”±GPUä¸Šçš„å¤åˆ¶å¼•æ“å®Œæˆ
+		//æ³¨æ„æ­¤æ—¶ç›´æ¥å‘½ä»¤åˆ—è¡¨è¿˜æ²¡æœ‰ç»‘å®šPSOå¯¹è±¡ï¼Œå› æ­¤å®ƒä¹Ÿæ˜¯ä¸èƒ½æ‰§è¡Œ3Då›¾å½¢å‘½ä»¤çš„ï¼Œä½†æ˜¯å¯ä»¥æ‰§è¡Œå¤åˆ¶å‘½ä»¤ï¼Œå› ä¸ºå¤åˆ¶å¼•æ“ä¸éœ€è¦ä»€ä¹ˆ
+		//é¢å¤–çš„çŠ¶æ€è®¾ç½®ä¹‹ç±»çš„å‚æ•°
 		{
 			D3D12_TEXTURE_COPY_LOCATION stDstCopyLocation = {};
 			stDstCopyLocation.pResource = pITexture.Get();
@@ -903,8 +903,8 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 
 			pICMDList->CopyTextureRegion(&stDstCopyLocation, 0, 0, 0, &stSrcCopyLocation, nullptr);
 
-			//ÉèÖÃÒ»¸ö×ÊÔ´ÆÁÕÏ£¬Í¬²½²¢È·ÈÏ¸´ÖÆ²Ù×÷Íê³É
-			//Ö±½ÓÊ¹ÓÃ½á¹¹ÌåÈ»ºóµ÷ÓÃµÄĞÎÊ½
+			//è®¾ç½®ä¸€ä¸ªèµ„æºå±éšœï¼ŒåŒæ­¥å¹¶ç¡®è®¤å¤åˆ¶æ“ä½œå®Œæˆ
+			//ç›´æ¥ä½¿ç”¨ç»“æ„ä½“ç„¶åè°ƒç”¨çš„å½¢å¼
 			D3D12_RESOURCE_BARRIER stResBar = {};
 			stResBar.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
 			stResBar.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
@@ -915,7 +915,7 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 
 			pICMDList->ResourceBarrier(1, &stResBar);
 
-			//»òÕßÊ¹ÓÃD3DX12¿âÖĞµÄ¹¤¾ßÀàµ÷ÓÃµÄµÈ¼ÛĞÎÊ½£¬ÏÂÃæµÄ·½Ê½¸ü¼ò½àÒ»Ğ©
+			//æˆ–è€…ä½¿ç”¨D3DX12åº“ä¸­çš„å·¥å…·ç±»è°ƒç”¨çš„ç­‰ä»·å½¢å¼ï¼Œä¸‹é¢çš„æ–¹å¼æ›´ç®€æ´ä¸€äº›
 			//pICMDList->ResourceBarrier(1
 			//	, &CD3DX12_RESOURCE_BARRIER::Transition(pITexture.Get()
 			//	, D3D12_RESOURCE_STATE_COPY_DEST
@@ -923,18 +923,18 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 			//);
 
 			//---------------------------------------------------------------------------------------------
-			// Ö´ĞĞÃüÁîÁĞ±í²¢µÈ´ıÎÆÀí×ÊÔ´ÉÏ´«Íê³É£¬ÕâÒ»²½ÊÇ±ØĞëµÄ
+			// æ‰§è¡Œå‘½ä»¤åˆ—è¡¨å¹¶ç­‰å¾…çº¹ç†èµ„æºä¸Šä¼ å®Œæˆï¼Œè¿™ä¸€æ­¥æ˜¯å¿…é¡»çš„
 			GRS_THROW_IF_FAILED(pICMDList->Close());
 			ID3D12CommandList* ppCommandLists[] = { pICMDList.Get() };
 			pICMDQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
 
 			//---------------------------------------------------------------------------------------------
-			// 17¡¢´´½¨Ò»¸öÍ¬²½¶ÔÏó¡ª¡ªÎ§À¸£¬ÓÃÓÚµÈ´ıäÖÈ¾Íê³É£¬ÒòÎªÏÖÔÚDraw CallÊÇÒì²½µÄÁË
+			// 17ã€åˆ›å»ºä¸€ä¸ªåŒæ­¥å¯¹è±¡â€”â€”å›´æ ï¼Œç”¨äºç­‰å¾…æ¸²æŸ“å®Œæˆï¼Œå› ä¸ºç°åœ¨Draw Callæ˜¯å¼‚æ­¥çš„äº†
 			GRS_THROW_IF_FAILED(pID3D12Device4->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&pIFence)));
 			n64FenceValue = 1;
 
 			//---------------------------------------------------------------------------------------------
-			// 18¡¢´´½¨Ò»¸öEventÍ¬²½¶ÔÏó£¬ÓÃÓÚµÈ´ıÎ§À¸ÊÂ¼şÍ¨Öª
+			// 18ã€åˆ›å»ºä¸€ä¸ªEventåŒæ­¥å¯¹è±¡ï¼Œç”¨äºç­‰å¾…å›´æ äº‹ä»¶é€šçŸ¥
 			hEventFence = CreateEvent(nullptr, FALSE, FALSE, nullptr);
 			if (hEventFence == nullptr)
 			{
@@ -942,7 +942,7 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 			}
 
 			//---------------------------------------------------------------------------------------------
-			// 19¡¢µÈ´ıÎÆÀí×ÊÔ´ÕıÊ½¸´ÖÆÍê³ÉÏÈ
+			// 19ã€ç­‰å¾…çº¹ç†èµ„æºæ­£å¼å¤åˆ¶å®Œæˆå…ˆ
 			const UINT64 fence = n64FenceValue;
 			GRS_THROW_IF_FAILED(pICMDQueue->Signal(pIFence.Get(), fence));
 			n64FenceValue++;
@@ -950,77 +950,37 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 
 		}
 		
-		//18¡¢¶¨ÒåÕı·½ĞÎµÄ3DÊı¾İ½á¹¹£¬×¢Òâ´Ë´¦µÄÎÆÀí×ø±êÎÒ¹ÊÒâÉèÖÃÎª´óÓÚ1
-		ST_GRS_VERTEX stTriangleVertices[] = {
-			{ {-1.0f * fBoxSize,  1.0f * fBoxSize, -1.0f * fBoxSize, 1.0f}, {0.0f * fTCMax, 0.0f* fTCMax}, {0.0f,  0.0f, -1.0f} },
-			{ {1.0f * fBoxSize,  1.0f * fBoxSize, -1.0f * fBoxSize, 1.0f}, {1.0f* fTCMax, 0.0f* fTCMax},  {0.0f,  0.0f, -1.0f} },
-			{ {-1.0f * fBoxSize, -1.0f * fBoxSize, -1.0f * fBoxSize, 1.0f}, {0.0f* fTCMax, 1.0f* fTCMax}, {0.0f,  0.0f, -1.0f} },
-			{ {-1.0f * fBoxSize, -1.0f * fBoxSize, -1.0f * fBoxSize, 1.0f}, {0.0f * fTCMax, 1.0f * fTCMax}, {0.0f,  0.0f, -1.0f} },
-			{ {1.0f * fBoxSize,  1.0f * fBoxSize, -1.0f * fBoxSize, 1.0f}, {1.0f * fTCMax, 0.0f * fTCMax},  {0.0f, 0.0f, -1.0f} },
-			{ {1.0f * fBoxSize, -1.0f * fBoxSize, -1.0f * fBoxSize, 1.0f}, {1.0f * fTCMax, 1.0f * fTCMax},  {0.0f,  0.0f, -1.0f} },
-			{ {1.0f * fBoxSize,  1.0f * fBoxSize, -1.0f * fBoxSize, 1.0f}, {0.0f * fTCMax, 0.0f * fTCMax},  {1.0f,  0.0f,  0.0f} },
-			{ {1.0f * fBoxSize,  1.0f * fBoxSize,  1.0f * fBoxSize, 1.0f}, {1.0f * fTCMax, 0.0f * fTCMax},  {1.0f,  0.0f,  0.0f} },
-			{ {1.0f * fBoxSize, -1.0f * fBoxSize, -1.0f * fBoxSize, 1.0f}, {0.0f * fTCMax, 1.0f * fTCMax},  {1.0f,  0.0f,  0.0f} },
-			{ {1.0f * fBoxSize, -1.0f * fBoxSize, -1.0f * fBoxSize, 1.0f}, {0.0f * fTCMax, 1.0f * fTCMax},  {1.0f,  0.0f,  0.0f} },
-			{ {1.0f * fBoxSize,  1.0f * fBoxSize,  1.0f * fBoxSize, 1.0f}, {1.0f * fTCMax, 0.0f * fTCMax},  {1.0f,  0.0f,  0.0f} },
-			{ {1.0f * fBoxSize, -1.0f * fBoxSize,  1.0f * fBoxSize, 1.0f}, {1.0f * fTCMax, 1.0f * fTCMax},  {1.0f,  0.0f,  0.0f} },
-			{ {1.0f * fBoxSize,  1.0f * fBoxSize,  1.0f * fBoxSize, 1.0f}, {0.0f * fTCMax, 0.0f * fTCMax},  {0.0f,  0.0f,  1.0f} },
-			{ {-1.0f * fBoxSize,  1.0f * fBoxSize,  1.0f * fBoxSize, 1.0f}, {1.0f * fTCMax, 0.0f * fTCMax},  {0.0f,  0.0f,  1.0f} },
-			{ {1.0f * fBoxSize, -1.0f * fBoxSize,  1.0f * fBoxSize, 1.0f}, {0.0f * fTCMax, 1.0f * fTCMax}, {0.0f,  0.0f,  1.0f} },
-			{ {1.0f * fBoxSize, -1.0f * fBoxSize,  1.0f * fBoxSize, 1.0f}, {0.0f * fTCMax, 1.0f * fTCMax},  {0.0f,  0.0f,  1.0f} },
-			{ {-1.0f * fBoxSize,  1.0f * fBoxSize,  1.0f * fBoxSize, 1.0f}, {1.0f * fTCMax, 0.0f * fTCMax},  {0.0f,  0.0f,  1.0f} },
-			{ {-1.0f * fBoxSize, -1.0f * fBoxSize,  1.0f * fBoxSize, 1.0f}, {1.0f * fTCMax, 1.0f * fTCMax},  {0.0f,  0.0f,  1.0f} },
-			{ {-1.0f * fBoxSize,  1.0f * fBoxSize,  1.0f * fBoxSize, 1.0f}, {0.0f * fTCMax, 0.0f * fTCMax}, {-1.0f,  0.0f,  0.0f} },
-			{ {-1.0f * fBoxSize,  1.0f * fBoxSize, -1.0f * fBoxSize, 1.0f}, {1.0f * fTCMax, 0.0f * fTCMax}, {-1.0f,  0.0f,  0.0f} },
-			{ {-1.0f * fBoxSize, -1.0f * fBoxSize,  1.0f * fBoxSize, 1.0f}, {0.0f * fTCMax, 1.0f * fTCMax}, {-1.0f,  0.0f,  0.0f} },
-			{ {-1.0f * fBoxSize, -1.0f * fBoxSize,  1.0f * fBoxSize, 1.0f}, {0.0f * fTCMax, 1.0f * fTCMax}, {-1.0f,  0.0f,  0.0f} },
-			{ {-1.0f * fBoxSize,  1.0f * fBoxSize, -1.0f * fBoxSize, 1.0f}, {1.0f * fTCMax, 0.0f * fTCMax}, {-1.0f,  0.0f,  0.0f} },
-			{ {-1.0f * fBoxSize, -1.0f * fBoxSize, -1.0f * fBoxSize, 1.0f}, {1.0f * fTCMax, 1.0f * fTCMax}, {-1.0f,  0.0f,  0.0f} },
-			{ {-1.0f * fBoxSize,  1.0f * fBoxSize,  1.0f * fBoxSize, 1.0f}, {0.0f * fTCMax, 0.0f * fTCMax},  {0.0f,  1.0f,  0.0f} },
-			{ {1.0f * fBoxSize,  1.0f * fBoxSize,  1.0f * fBoxSize, 1.0f}, {1.0f * fTCMax, 0.0f * fTCMax},  {0.0f,  1.0f,  0.0f} },
-			{ {-1.0f * fBoxSize,  1.0f * fBoxSize, -1.0f * fBoxSize, 1.0f}, {0.0f * fTCMax, 1.0f * fTCMax},  {0.0f,  1.0f,  0.0f} },
-			{ {-1.0f * fBoxSize,  1.0f * fBoxSize, -1.0f * fBoxSize, 1.0f}, {0.0f * fTCMax, 1.0f * fTCMax},  {0.0f,  1.0f,  0.0f} },
-			{ {1.0f * fBoxSize,  1.0f * fBoxSize,  1.0f * fBoxSize, 1.0f}, {1.0f * fTCMax, 0.0f * fTCMax},  {0.0f,  1.0f,  0.0f} },
-			{ {1.0f * fBoxSize,  1.0f * fBoxSize, -1.0f * fBoxSize, 1.0f}, {1.0f * fTCMax, 1.0f * fTCMax},  {0.0f,  1.0f,  0.0f }},
-			{ {-1.0f * fBoxSize, -1.0f * fBoxSize, -1.0f * fBoxSize, 1.0f}, {0.0f * fTCMax, 0.0f * fTCMax},  {0.0f, -1.0f,  0.0f} },
-			{ {1.0f * fBoxSize, -1.0f * fBoxSize, -1.0f * fBoxSize, 1.0f}, {1.0f * fTCMax, 0.0f * fTCMax},  {0.0f, -1.0f,  0.0f} },
-			{ {-1.0f * fBoxSize, -1.0f * fBoxSize,  1.0f * fBoxSize, 1.0f}, {0.0f * fTCMax, 1.0f * fTCMax},  {0.0f, -1.0f,  0.0f} },
-			{ {-1.0f * fBoxSize, -1.0f * fBoxSize,  1.0f * fBoxSize, 1.0f}, {0.0f * fTCMax, 1.0f * fTCMax},  {0.0f, -1.0f,  0.0f} },
-			{ {1.0f * fBoxSize, -1.0f * fBoxSize, -1.0f * fBoxSize, 1.0f}, {1.0f * fTCMax, 0.0f * fTCMax},  {0.0f, -1.0f,  0.0f} },
-			{ {1.0f * fBoxSize, -1.0f * fBoxSize,  1.0f * fBoxSize, 1.0f}, {1.0f * fTCMax, 1.0f * fTCMax},  {0.0f, -1.0f,  0.0f} },
-		};
+		//åŠ è½½æ•°æ®
+		{
+			OBJLoadClass tOBJLoadClass("D:\\common\\work\\solution\\test\\GRSD3D12Sample\\Assets\\pig\\pig_base.obj");
 
-		const UINT nVertexBufferSize = sizeof(stTriangleVertices);
+			nSphereVertexCnt = tOBJLoadClass.mVertexData.size();
+			nSphereIndexCnt = nSphereVertexCnt;
 
-		UINT32 pBoxIndices[] //Á¢·½ÌåË÷ÒıÊı×é
-			= {
-			0,1,2,
-			3,4,5,
+			pstSphereVertices = (ST_GRS_VERTEX*)GRS_CALLOC(nSphereVertexCnt * sizeof(ST_GRS_VERTEX));
+			pSphereIndices = (UINT*)GRS_CALLOC(nSphereVertexCnt * sizeof(UINT));
 
-			6,7,8,
-			9,10,11,
+			for (UINT32 i = 0; i < nSphereIndexCnt; i++)
+			{
+				pstSphereVertices[i].m_v4Position = tOBJLoadClass.mVertexData[i].m_v4Position;
+				pstSphereVertices[i].m_vNor = tOBJLoadClass.mVertexData[i].m_vNor;
+				pstSphereVertices[i].m_vTex = tOBJLoadClass.mVertexData[i].m_vTex;
 
-			12,13,14,
-			15,16,17,
+				pSphereIndices[i] = i;
+			}
 
-			18,19,20,
-			21,22,23,
+		}
 
-			24,25,26,
-			27,28,29,
+		const UINT nVertexBufferSize = sizeof(pstSphereVertices);
 
-			30,31,32,
-			33,34,35,
-		};
-
-		const UINT nszIndexBuffer = sizeof(pBoxIndices);
+		const UINT nszIndexBuffer = sizeof(pSphereIndices);
 
 		UINT64 n64BufferOffset = GRS_UPPER(n64UploadBufferSize, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT);
-		//19¡¢Ê¹ÓÃ¡°¶¨Î»·½Ê½¡±´´½¨¶¥µã»º³åºÍË÷Òı»º³å£¬Ê¹ÓÃÓëÉÏ´«ÎÆÀíÊı¾İ»º³åÏàÍ¬µÄÒ»¸öÉÏ´«¶Ñ
+		//19ã€ä½¿ç”¨â€œå®šä½æ–¹å¼â€åˆ›å»ºé¡¶ç‚¹ç¼“å†²å’Œç´¢å¼•ç¼“å†²ï¼Œä½¿ç”¨ä¸ä¸Šä¼ çº¹ç†æ•°æ®ç¼“å†²ç›¸åŒçš„ä¸€ä¸ªä¸Šä¼ å †
 		{
 			//---------------------------------------------------------------------------------------------
-			//Ê¹ÓÃ¶¨Î»·½Ê½ÔÚÏàÍ¬µÄÉÏ´«¶ÑÉÏÒÔ¡°¶¨Î»·½Ê½¡±´´½¨¶¥µã»º³å£¬×¢ÒâµÚ¶ş¸ö²ÎÊıÖ¸³öÁË¶ÑÖĞµÄÆ«ÒÆÎ»ÖÃ
-			//°´ÕÕ¶Ñ±ß½ç¶ÔÆëµÄÒªÇó£¬ÎÒÃÇÖ÷¶¯½«Æ«ÒÆÎ»ÖÃ¶ÔÆëµ½ÁË64kµÄ±ß½çÉÏ
+			//ä½¿ç”¨å®šä½æ–¹å¼åœ¨ç›¸åŒçš„ä¸Šä¼ å †ä¸Šä»¥â€œå®šä½æ–¹å¼â€åˆ›å»ºé¡¶ç‚¹ç¼“å†²ï¼Œæ³¨æ„ç¬¬äºŒä¸ªå‚æ•°æŒ‡å‡ºäº†å †ä¸­çš„åç§»ä½ç½®
+			//æŒ‰ç…§å †è¾¹ç•Œå¯¹é½çš„è¦æ±‚ï¼Œæˆ‘ä»¬ä¸»åŠ¨å°†åç§»ä½ç½®å¯¹é½åˆ°äº†64kçš„è¾¹ç•Œä¸Š
 			D3D12_RESOURCE_DESC stVBResDesc = {};
 			stVBResDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
 			stVBResDesc.Alignment = D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT;
@@ -1042,21 +1002,21 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 				, nullptr
 				, IID_PPV_ARGS(&pIVertexBuffer)));
 
-			//Ê¹ÓÃmap-memcpy-unmap´ó·¨½«Êı¾İ´«ÖÁ¶¥µã»º³å¶ÔÏó
-			//×¢Òâ¶¥µã»º³åÊ¹ÓÃÊÇºÍÉÏ´«ÎÆÀíÊı¾İ»º³åÏàÍ¬µÄÒ»¸ö¶Ñ£¬ÕâºÜÉñÆæ
+			//ä½¿ç”¨map-memcpy-unmapå¤§æ³•å°†æ•°æ®ä¼ è‡³é¡¶ç‚¹ç¼“å†²å¯¹è±¡
+			//æ³¨æ„é¡¶ç‚¹ç¼“å†²ä½¿ç”¨æ˜¯å’Œä¸Šä¼ çº¹ç†æ•°æ®ç¼“å†²ç›¸åŒçš„ä¸€ä¸ªå †ï¼Œè¿™å¾ˆç¥å¥‡
 			UINT8* pVertexDataBegin = nullptr;
 			D3D12_RANGE stReadRange = { 0, 0 };		// We do not intend to read from this resource on the CPU.
 
 			GRS_THROW_IF_FAILED(pIVertexBuffer->Map(0, &stReadRange, reinterpret_cast<void**>(&pVertexDataBegin)));
-			memcpy(pVertexDataBegin, stTriangleVertices, sizeof(stTriangleVertices));
+			memcpy(pVertexDataBegin, pstSphereVertices, sizeof(pstSphereVertices));
 			pIVertexBuffer->Unmap(0, nullptr);
 
-			//´´½¨×ÊÔ´ÊÓÍ¼£¬Êµ¼Ê¿ÉÒÔ¼òµ¥Àí½âÎªÖ¸Ïò¶¥µã»º³åµÄÏÔ´æÖ¸Õë
+			//åˆ›å»ºèµ„æºè§†å›¾ï¼Œå®é™…å¯ä»¥ç®€å•ç†è§£ä¸ºæŒ‡å‘é¡¶ç‚¹ç¼“å†²çš„æ˜¾å­˜æŒ‡é’ˆ
 			stVertexBufferView.BufferLocation = pIVertexBuffer->GetGPUVirtualAddress();
 			stVertexBufferView.StrideInBytes = sizeof(ST_GRS_VERTEX);
 			stVertexBufferView.SizeInBytes = nVertexBufferSize;
 
-			//¼ÆËã±ß½ç¶ÔÆëµÄÕıÈ·µÄÆ«ÒÆÎ»ÖÃ
+			//è®¡ç®—è¾¹ç•Œå¯¹é½çš„æ­£ç¡®çš„åç§»ä½ç½®
 			n64BufferOffset = GRS_UPPER(n64BufferOffset + nVertexBufferSize, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT);
 
 			D3D12_RESOURCE_DESC stIBResDesc = {};
@@ -1082,7 +1042,7 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 
 			UINT8* pIndexDataBegin = nullptr;
 			GRS_THROW_IF_FAILED(pIIndexBuffer->Map(0, &stReadRange, reinterpret_cast<void**>(&pIndexDataBegin)));
-			memcpy(pIndexDataBegin, pBoxIndices, nszIndexBuffer);
+			memcpy(pIndexDataBegin, pSphereIndices, nszIndexBuffer);
 			pIIndexBuffer->Unmap(0, nullptr);
 
 			stIndexBufferView.BufferLocation = pIIndexBuffer->GetGPUVirtualAddress();
@@ -1090,7 +1050,7 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 			stIndexBufferView.SizeInBytes = nszIndexBuffer;
 		}
 
-		//20¡¢ÔÚÉÏ´«¶ÑÉÏÒÔ¡°¶¨Î»·½Ê½¡±´´½¨³£Á¿»º³å
+		//20ã€åœ¨ä¸Šä¼ å †ä¸Šä»¥â€œå®šä½æ–¹å¼â€åˆ›å»ºå¸¸é‡ç¼“å†²
 		{
 			n64BufferOffset = GRS_UPPER(n64BufferOffset + nszIndexBuffer, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT);
 
@@ -1106,7 +1066,7 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 			stMVPResDesc.SampleDesc.Quality = 0;
 			stMVPResDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
 			stMVPResDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
-			// ´´½¨³£Á¿»º³å ×¢Òâ»º³å³ß´çÉèÖÃÎª256±ß½ç¶ÔÆë´óĞ¡
+			// åˆ›å»ºå¸¸é‡ç¼“å†² æ³¨æ„ç¼“å†²å°ºå¯¸è®¾ç½®ä¸º256è¾¹ç•Œå¯¹é½å¤§å°
 			GRS_THROW_IF_FAILED(pID3D12Device4->CreatePlacedResource(
 				pIUploadHeap.Get()
 				, n64BufferOffset
@@ -1115,12 +1075,12 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 				, nullptr
 				, IID_PPV_ARGS(&pICBVUpload)));
 
-			// Map Ö®ºó¾Í²»ÔÙUnmapÁË Ö±½Ó¸´ÖÆÊı¾İ½øÈ¥ ÕâÑùÃ¿Ö¡¶¼²»ÓÃmap-copy-unmapÀË·ÑÊ±¼äÁË
+			// Map ä¹‹åå°±ä¸å†Unmapäº† ç›´æ¥å¤åˆ¶æ•°æ®è¿›å» è¿™æ ·æ¯å¸§éƒ½ä¸ç”¨map-copy-unmapæµªè´¹æ—¶é—´äº†
 			GRS_THROW_IF_FAILED(pICBVUpload->Map(0, nullptr, reinterpret_cast<void**>(&pMVPBuffer)));
 
 		}
 
-		//21¡¢´´½¨SRVÃèÊö·û
+		//21ã€åˆ›å»ºSRVæè¿°ç¬¦
 		{
 			D3D12_SHADER_RESOURCE_VIEW_DESC stSRVDesc = {};
 			stSRVDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
@@ -1130,7 +1090,7 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 			pID3D12Device4->CreateShaderResourceView(pITexture.Get(), &stSRVDesc, pISRVHeap->GetCPUDescriptorHandleForHeapStart());
 		}
 
-		//22¡¢´´½¨CBVÃèÊö·û
+		//22ã€åˆ›å»ºCBVæè¿°ç¬¦
 		{
 			D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
 			cbvDesc.BufferLocation = pICBVUpload->GetGPUVirtualAddress();
@@ -1143,7 +1103,7 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 			pID3D12Device4->CreateConstantBufferView(&cbvDesc, stCPUCBVHandle);
 		}
 
-		//23¡¢´´½¨¸÷ÖÖ²ÉÑùÆ÷
+		//23ã€åˆ›å»ºå„ç§é‡‡æ ·å™¨
 		{
 
 			D3D12_CPU_DESCRIPTOR_HANDLE hSamplerHeap = pISamplerDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
@@ -1220,14 +1180,14 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 			stEndResBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
 		}
 
-		//25¡¢¼ÇÂ¼Ö¡¿ªÊ¼Ê±¼ä£¬ºÍµ±Ç°Ê±¼ä£¬ÒÔÑ­»·½áÊøÎª½ç
+		//25ã€è®°å½•å¸§å¼€å§‹æ—¶é—´ï¼Œå’Œå½“å‰æ—¶é—´ï¼Œä»¥å¾ªç¯ç»“æŸä¸ºç•Œ
 		ULONGLONG n64tmFrameStart = ::GetTickCount64();
 		ULONGLONG n64tmCurrent = n64tmFrameStart;
-		//¼ÆËãĞı×ª½Ç¶ÈĞèÒªµÄ±äÁ¿
+		//è®¡ç®—æ—‹è½¬è§’åº¦éœ€è¦çš„å˜é‡
 		double dModelRotationYAngle = 0.0f;
 
 		//---------------------------------------------------------------------------------------------
-		//26¡¢¿ªÊ¼ÏûÏ¢Ñ­»·£¬²¢ÔÚÆäÖĞ²»¶ÏäÖÈ¾
+		//26ã€å¼€å§‹æ¶ˆæ¯å¾ªç¯ï¼Œå¹¶åœ¨å…¶ä¸­ä¸æ–­æ¸²æŸ“
 		DWORD dwRet = 0;
 		BOOL bExit = FALSE;
 
@@ -1235,64 +1195,64 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 		UpdateWindow(hWnd);
 
 		while (!bExit)
-		{//×¢ÒâÕâÀïÎÒÃÇµ÷ÕûÁËÏûÏ¢Ñ­»·£¬½«µÈ´ıÊ±¼äÉèÖÃÎª0£¬Í¬Ê±½«¶¨Ê±ĞÔµÄäÖÈ¾£¬¸Ä³ÉÁËÃ¿´ÎÑ­»·¶¼äÖÈ¾
-		 //µ«Õâ²»±íÊ¾ËµMsgWaitº¯Êı¾ÍÃ»É¶ÓÃÁË£¬¼á³ÖÊ¹ÓÃËüÊÇÒòÎªºóÃæÀı×ÓÈç¹ûÏë¼ÓÈë¶àÏß³Ì¿ØÖÆ¾Í·Ç³£¼òµ¥ÁË
+		{//æ³¨æ„è¿™é‡Œæˆ‘ä»¬è°ƒæ•´äº†æ¶ˆæ¯å¾ªç¯ï¼Œå°†ç­‰å¾…æ—¶é—´è®¾ç½®ä¸º0ï¼ŒåŒæ—¶å°†å®šæ—¶æ€§çš„æ¸²æŸ“ï¼Œæ”¹æˆäº†æ¯æ¬¡å¾ªç¯éƒ½æ¸²æŸ“
+		 //ä½†è¿™ä¸è¡¨ç¤ºè¯´MsgWaitå‡½æ•°å°±æ²¡å•¥ç”¨äº†ï¼ŒåšæŒä½¿ç”¨å®ƒæ˜¯å› ä¸ºåé¢ä¾‹å­å¦‚æœæƒ³åŠ å…¥å¤šçº¿ç¨‹æ§åˆ¶å°±éå¸¸ç®€å•äº†
 			dwRet = ::MsgWaitForMultipleObjects(1, &hEventFence, FALSE, INFINITE, QS_ALLINPUT);
 			switch (dwRet - WAIT_OBJECT_0)
 			{
 			case 0:
 			{
-				//¿ªÊ¼¼ÇÂ¼ÃüÁî
-				// ×¼±¸Ò»¸ö¼òµ¥µÄĞı×ªMVP¾ØÕó ÈÃ·½¿é×ªÆğÀ´
+				//å¼€å§‹è®°å½•å‘½ä»¤
+				// å‡†å¤‡ä¸€ä¸ªç®€å•çš„æ—‹è½¬MVPçŸ©é˜µ è®©æ–¹å—è½¬èµ·æ¥
 				{// OnUpdate()
 					n64tmCurrent = ::GetTickCount();
-					//¼ÆËãĞı×ªµÄ½Ç¶È£ºĞı×ª½Ç¶È(»¡¶È) = Ê±¼ä(Ãë) * ½ÇËÙ¶È(»¡¶È/Ãë)
-					//ÏÂÃæÕâ¾ä´úÂëÏàµ±ÓÚ¾­µäÓÎÏ·ÏûÏ¢Ñ­»·ÖĞµÄOnUpdateº¯ÊıÖĞĞèÒª×öµÄÊÂÇé
+					//è®¡ç®—æ—‹è½¬çš„è§’åº¦ï¼šæ—‹è½¬è§’åº¦(å¼§åº¦) = æ—¶é—´(ç§’) * è§’é€Ÿåº¦(å¼§åº¦/ç§’)
+					//ä¸‹é¢è¿™å¥ä»£ç ç›¸å½“äºç»å…¸æ¸¸æˆæ¶ˆæ¯å¾ªç¯ä¸­çš„OnUpdateå‡½æ•°ä¸­éœ€è¦åšçš„äº‹æƒ…
 					dModelRotationYAngle += ((n64tmCurrent - n64tmFrameStart) / 1000.0f) * g_fPalstance;
 
 					n64tmFrameStart = n64tmCurrent;
 
-					//Ğı×ª½Ç¶ÈÊÇ2PIÖÜÆÚµÄ±¶Êı£¬È¥µôÖÜÆÚÊı£¬Ö»ÁôÏÂÏà¶Ô0»¡¶È¿ªÊ¼µÄĞ¡ÓÚ2PIµÄ»¡¶È¼´¿É
+					//æ—‹è½¬è§’åº¦æ˜¯2PIå‘¨æœŸçš„å€æ•°ï¼Œå»æ‰å‘¨æœŸæ•°ï¼Œåªç•™ä¸‹ç›¸å¯¹0å¼§åº¦å¼€å§‹çš„å°äº2PIçš„å¼§åº¦å³å¯
 					if (dModelRotationYAngle > XM_2PI)
 					{
 						dModelRotationYAngle = fmod(dModelRotationYAngle, XM_2PI);
 					}
 
-					//Ä£ĞÍ¾ØÕó model
+					//æ¨¡å‹çŸ©é˜µ model
 					XMMATRIX xmRot = XMMatrixRotationY(static_cast<float>(dModelRotationYAngle));
 
-					//¼ÆËã Ä£ĞÍ¾ØÕó model * ÊÓ¾ØÕó view
+					//è®¡ç®— æ¨¡å‹çŸ©é˜µ model * è§†çŸ©é˜µ view
 					XMMATRIX xmMVP = XMMatrixMultiply(xmRot, XMMatrixLookAtLH(g_v4EyePos, g_v4LookAt, g_v4UpDir));
 
-					//Í¶Ó°¾ØÕó projection
+					//æŠ•å½±çŸ©é˜µ projection
 					xmMVP = XMMatrixMultiply(xmMVP, (XMMatrixPerspectiveFovLH(XM_PIDIV4, (FLOAT)iWidth / (FLOAT)iHeight, 0.1f, 1000.0f)));
 
 					XMStoreFloat4x4(&pMVPBuffer->m_MVP, xmMVP);
 				}
 				//---------------------------------------------------------------------------------------------
 
-				//ÃüÁî·ÖÅäÆ÷ÏÈResetÒ»ÏÂ
+				//å‘½ä»¤åˆ†é…å™¨å…ˆResetä¸€ä¸‹
 				GRS_THROW_IF_FAILED(pICMDAlloc->Reset());
-				//ResetÃüÁîÁĞ±í£¬²¢ÖØĞÂÖ¸¶¨ÃüÁî·ÖÅäÆ÷ºÍPSO¶ÔÏó
+				//Resetå‘½ä»¤åˆ—è¡¨ï¼Œå¹¶é‡æ–°æŒ‡å®šå‘½ä»¤åˆ†é…å™¨å’ŒPSOå¯¹è±¡
 				GRS_THROW_IF_FAILED(pICMDList->Reset(pICMDAlloc.Get(), pIPipelineState.Get()));
 
-				//»ñÈ¡ĞÂµÄºó»º³åĞòºÅ£¬ÒòÎªPresentÕæÕıÍê³ÉÊ±ºó»º³åµÄĞòºÅ¾Í¸üĞÂÁË
+				//è·å–æ–°çš„åç¼“å†²åºå·ï¼Œå› ä¸ºPresentçœŸæ­£å®Œæˆæ—¶åç¼“å†²çš„åºå·å°±æ›´æ–°äº†
 				nFrameIndex = pISwapChain3->GetCurrentBackBufferIndex();
 
 				//---------------------------------------------------------------------------------------------
-				// Í¨¹ı×ÊÔ´ÆÁÕÏÅĞ¶¨ºó»º³åÒÑ¾­ÇĞ»»Íê±Ï¿ÉÒÔ¿ªÊ¼äÖÈ¾ÁË
+				// é€šè¿‡èµ„æºå±éšœåˆ¤å®šåç¼“å†²å·²ç»åˆ‡æ¢å®Œæ¯•å¯ä»¥å¼€å§‹æ¸²æŸ“äº†
 				stBeginResBarrier.Transition.pResource = pIARenderTargets[nFrameIndex].Get();
 				pICMDList->ResourceBarrier(1, &stBeginResBarrier);
 
-				//Æ«ÒÆÃèÊö·ûÖ¸Õëµ½Ö¸¶¨Ö¡»º³åÊÓÍ¼Î»ÖÃ
+				//åç§»æè¿°ç¬¦æŒ‡é’ˆåˆ°æŒ‡å®šå¸§ç¼“å†²è§†å›¾ä½ç½®
 				D3D12_CPU_DESCRIPTOR_HANDLE stRTVHandle = pIRTVHeap->GetCPUDescriptorHandleForHeapStart();
 				stRTVHandle.ptr += (nFrameIndex * nRTVDescriptorSize);
-				//ÉèÖÃäÖÈ¾Ä¿±ê
+				//è®¾ç½®æ¸²æŸ“ç›®æ ‡
 				pICMDList->OMSetRenderTargets(1, &stRTVHandle, FALSE, nullptr);
 
 				pICMDList->RSSetViewports(1, &stViewPort);
 				pICMDList->RSSetScissorRects(1, &stScissorRect);
-				// ¼ÌĞø¼ÇÂ¼ÃüÁî£¬²¢ÕæÕı¿ªÊ¼ĞÂÒ»Ö¡µÄäÖÈ¾
+				// ç»§ç»­è®°å½•å‘½ä»¤ï¼Œå¹¶çœŸæ­£å¼€å§‹æ–°ä¸€å¸§çš„æ¸²æŸ“
 				const float arClearColor[] = { 0.0f, 0.2f, 0.4f, 1.0f };
 				pICMDList->ClearRenderTargetView(stRTVHandle, arClearColor, 0, nullptr);
 
@@ -1302,47 +1262,47 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 				pICMDList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
 				D3D12_GPU_DESCRIPTOR_HANDLE stGPUSRVHandle = pISRVHeap->GetGPUDescriptorHandleForHeapStart();
-				//ÉèÖÃSRV
+				//è®¾ç½®SRV
 				pICMDList->SetGraphicsRootDescriptorTable(0, stGPUSRVHandle);
 
 				stGPUSRVHandle.ptr += nSRVDescriptorSize;
 
-				//ÉèÖÃCBV
+				//è®¾ç½®CBV
 				pICMDList->SetGraphicsRootDescriptorTable(1, stGPUSRVHandle);
 
 
 				D3D12_GPU_DESCRIPTOR_HANDLE hGPUSampler = pISamplerDescriptorHeap->GetGPUDescriptorHandleForHeapStart();
 				hGPUSampler.ptr += (g_nCurrentSamplerNO * nSamplerDescriptorSize);
-				//ÉèÖÃSample
+				//è®¾ç½®Sample
 				pICMDList->SetGraphicsRootDescriptorTable(2, hGPUSampler);
 
-				//×¢ÒâÎÒÃÇÊ¹ÓÃµÄäÖÈ¾ÊÖ·¨ÊÇÈı½ÇĞÎÁĞ±í£¬Ò²¾ÍÊÇÍ¨³£µÄMeshÍø¸ñ
+				//æ³¨æ„æˆ‘ä»¬ä½¿ç”¨çš„æ¸²æŸ“æ‰‹æ³•æ˜¯ä¸‰è§’å½¢åˆ—è¡¨ï¼Œä¹Ÿå°±æ˜¯é€šå¸¸çš„Meshç½‘æ ¼
 				pICMDList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 				pICMDList->IASetVertexBuffers(0, 1, &stVertexBufferView);
 				pICMDList->IASetIndexBuffer(&stIndexBufferView);
 
 				//---------------------------------------------------------------------------------------------
-				//Draw Call£¡£¡£¡
-				pICMDList->DrawIndexedInstanced(_countof(pBoxIndices), 1, 0, 0, 0);
+				//Draw Callï¼ï¼ï¼
+				pICMDList->DrawIndexedInstanced(nSphereIndexCnt, 1, 0, 0, 0);
 
 				//---------------------------------------------------------------------------------------------
-				//ÓÖÒ»¸ö×ÊÔ´ÆÁÕÏ£¬ÓÃÓÚÈ·¶¨äÖÈ¾ÒÑ¾­½áÊø¿ÉÒÔÌá½»»­ÃæÈ¥ÏÔÊ¾ÁË
+				//åˆä¸€ä¸ªèµ„æºå±éšœï¼Œç”¨äºç¡®å®šæ¸²æŸ“å·²ç»ç»“æŸå¯ä»¥æäº¤ç”»é¢å»æ˜¾ç¤ºäº†
 				stEndResBarrier.Transition.pResource = pIARenderTargets[nFrameIndex].Get();
 				pICMDList->ResourceBarrier(1, &stEndResBarrier);
-				//¹Ø±ÕÃüÁîÁĞ±í£¬¿ÉÒÔÈ¥Ö´ĞĞÁË
+				//å…³é—­å‘½ä»¤åˆ—è¡¨ï¼Œå¯ä»¥å»æ‰§è¡Œäº†
 				GRS_THROW_IF_FAILED(pICMDList->Close());
 
 				//---------------------------------------------------------------------------------------------
-				//Ö´ĞĞÃüÁîÁĞ±í
+				//æ‰§è¡Œå‘½ä»¤åˆ—è¡¨
 				ID3D12CommandList* ppCommandLists[] = { pICMDList.Get() };
 				pICMDQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
 
 				//---------------------------------------------------------------------------------------------
-				//Ìá½»»­Ãæ
+				//æäº¤ç”»é¢
 				GRS_THROW_IF_FAILED(pISwapChain3->Present(1, 0));
 
 				//---------------------------------------------------------------------------------------------
-				//¿ªÊ¼Í¬²½GPUÓëCPUµÄÖ´ĞĞ£¬ÏÈ¼ÇÂ¼Î§À¸±ê¼ÇÖµ
+				//å¼€å§‹åŒæ­¥GPUä¸CPUçš„æ‰§è¡Œï¼Œå…ˆè®°å½•å›´æ æ ‡è®°å€¼
 				const UINT64 fence = n64FenceValue;
 				GRS_THROW_IF_FAILED(pICMDQueue->Signal(pIFence.Get(), fence));
 				n64FenceValue++;
@@ -1351,7 +1311,7 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 			}
 			break;
 			case 1:
-			{//´¦ÀíÏûÏ¢
+			{//å¤„ç†æ¶ˆæ¯
 				while (::PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
 				{
 					if (WM_QUIT != msg.message)
@@ -1380,7 +1340,7 @@ int APIENTRY _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    l
 		//::CoUninitialize();
 	}
 	catch (CGRSCOMException& e)
-	{//·¢ÉúÁËCOMÒì³£
+	{//å‘ç”Ÿäº†COMå¼‚å¸¸
 		e;
 	}
 	return 0;
@@ -1397,17 +1357,17 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	{
 		USHORT n16KeyCode = (wParam & 0xFF);
 		if (VK_SPACE == n16KeyCode)
-		{//°´¿Õ¸ñ¼üÇĞ»»²»Í¬µÄ²ÉÑùÆ÷¿´Ğ§¹û£¬ÒÔÃ÷°×Ã¿ÖÖ²ÉÑùÆ÷¾ßÌåµÄº¬Òå
-			//UINT g_nCurrentSamplerNO = 0; //µ±Ç°Ê¹ÓÃµÄ²ÉÑùÆ÷Ë÷Òı
-			//UINT g_nSampleMaxCnt = 5;		//´´½¨Îå¸öµäĞÍµÄ²ÉÑùÆ÷
+		{//æŒ‰ç©ºæ ¼é”®åˆ‡æ¢ä¸åŒçš„é‡‡æ ·å™¨çœ‹æ•ˆæœï¼Œä»¥æ˜ç™½æ¯ç§é‡‡æ ·å™¨å…·ä½“çš„å«ä¹‰
+			//UINT g_nCurrentSamplerNO = 0; //å½“å‰ä½¿ç”¨çš„é‡‡æ ·å™¨ç´¢å¼•
+			//UINT g_nSampleMaxCnt = 5;		//åˆ›å»ºäº”ä¸ªå…¸å‹çš„é‡‡æ ·å™¨
 			++g_nCurrentSamplerNO;
 			g_nCurrentSamplerNO %= g_nSampleMaxCnt;
 		}
 
-		//¸ù¾İÓÃ»§ÊäÈë±ä»»
-		//XMVECTOR g_v4EyePos = XMVectorSet(0.0f, 5.0f, -10.0f, 0.0f); //ÑÛ¾¦Î»ÖÃ
-		//XMVECTOR g_v4LookAt = XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);  //ÑÛ¾¦Ëù¶¢µÄÎ»ÖÃ
-		//XMVECTOR g_v4UpDir = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);  //Í·²¿ÕıÉÏ·½Î»ÖÃ
+		//æ ¹æ®ç”¨æˆ·è¾“å…¥å˜æ¢
+		//XMVECTOR g_v4EyePos = XMVectorSet(0.0f, 5.0f, -10.0f, 0.0f); //çœ¼ç›ä½ç½®
+		//XMVECTOR g_v4LookAt = XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);  //çœ¼ç›æ‰€ç›¯çš„ä½ç½®
+		//XMVECTOR g_v4UpDir = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);  //å¤´éƒ¨æ­£ä¸Šæ–¹ä½ç½®
 
 		if (VK_UP == n16KeyCode || 'w' == n16KeyCode || 'W' == n16KeyCode)
 		{
@@ -1442,7 +1402,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 		if ( VK_ADD == n16KeyCode || VK_OEM_PLUS == n16KeyCode )
 		{
-			//double g_fPalstance = 10.0f * XM_PI / 180.0f;	//ÎïÌåĞı×ªµÄ½ÇËÙ¶È£¬µ¥Î»£º»¡¶È/Ãë
+			//double g_fPalstance = 10.0f * XM_PI / 180.0f;	//ç‰©ä½“æ—‹è½¬çš„è§’é€Ÿåº¦ï¼Œå•ä½ï¼šå¼§åº¦/ç§’
 			g_fPalstance += 10 * XM_PI / 180.0f;
 			if (g_fPalstance > XM_PI)
 			{

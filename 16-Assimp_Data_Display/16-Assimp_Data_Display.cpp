@@ -1,5 +1,5 @@
-#include <SDKDDKVer.h>
-#define WIN32_LEAN_AND_MEAN // ´Ó Windows Í·ÖĞÅÅ³ı¼«ÉÙÊ¹ÓÃµÄ×ÊÁÏ
+ï»¿#include <SDKDDKVer.h>
+#define WIN32_LEAN_AND_MEAN // ä» Windows å¤´ä¸­æ’é™¤æå°‘ä½¿ç”¨çš„èµ„æ–™
 #include <windows.h>
 #include <tchar.h>
 #include <commdlg.h>
@@ -16,16 +16,16 @@ using namespace DirectX;
 
 #include "../Commons/GRS_Console_Utility.h"
 
-#include <assimp/Importer.hpp>      // µ¼ÈëÆ÷ÔÚ¸ÃÍ·ÎÄ¼şÖĞ¶¨Òå
-#include <assimp/scene.h>           // ¶ÁÈ¡µ½µÄÄ£ĞÍÊı¾İ¶¼·ÅÔÚsceneÖĞ
+#include <assimp/Importer.hpp>      // å¯¼å…¥å™¨åœ¨è¯¥å¤´æ–‡ä»¶ä¸­å®šä¹‰
+#include <assimp/scene.h>           // è¯»å–åˆ°çš„æ¨¡å‹æ•°æ®éƒ½æ”¾åœ¨sceneä¸­
 #include <assimp/postprocess.h>
 
 #pragma comment(lib, "assimp-vc142-mtd.lib")
 
 #define GRS_WND_TITLE L"GRS DirectX12 Assimp Import Data Display Sample"
 
-// µ¼ÈëÎÄ¼şÊ±Ô¤´¦ÀíµÄ±êÖ¾ define in "postprocess.h"
-// ×¢ÒâÕâÀïµÄPost PorcessµÄÒâË¼ÊÇÏà¶ÔÓÚAssimpÀ´Ëµ£¬µ¼ÈëÎÄ¼şÖĞÊı¾İÒÔºóµÄºó´¦Àí£¬¸úäÖÈ¾µÄºó´¦ÀíÃ»ÓĞ°ëÃ«Ç®¹ØÏµ
+// å¯¼å…¥æ–‡ä»¶æ—¶é¢„å¤„ç†çš„æ ‡å¿— define in "postprocess.h"
+// æ³¨æ„è¿™é‡Œçš„Post Porcessçš„æ„æ€æ˜¯ç›¸å¯¹äºAssimpæ¥è¯´ï¼Œå¯¼å…¥æ–‡ä»¶ä¸­æ•°æ®ä»¥åçš„åå¤„ç†ï¼Œè·Ÿæ¸²æŸ“çš„åå¤„ç†æ²¡æœ‰åŠæ¯›é’±å…³ç³»
 // aiProcess_LimitBoneWeights
 // aiProcess_OptimizeMeshes
 // aiProcess_MakeLeftHanded
@@ -96,40 +96,40 @@ int APIENTRY _tWinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    
     {
         GRSInitConsole( GRS_WND_TITLE );
         USES_CONVERSION;
-        //µ÷ÕûÃüÁîĞĞ´°¿Ú´óĞ¡ ×î´ó»¯ÏÔÊ¾
+        //è°ƒæ•´å‘½ä»¤è¡Œçª—å£å¤§å° æœ€å¤§åŒ–æ˜¾ç¤º
         GRSSetConsoleMax();
 
         WCHAR pszAppPath[MAX_PATH] = {};
-        // µÃµ½µ±Ç°µÄ¹¤×÷Ä¿Â¼£¬·½±ãÎÒÃÇÊ¹ÓÃÏà¶ÔÂ·¾¶À´·ÃÎÊ¸÷ÖÖ×ÊÔ´ÎÄ¼ş
+        // å¾—åˆ°å½“å‰çš„å·¥ä½œç›®å½•ï¼Œæ–¹ä¾¿æˆ‘ä»¬ä½¿ç”¨ç›¸å¯¹è·¯å¾„æ¥è®¿é—®å„ç§èµ„æºæ–‡ä»¶
         {
             if ( 0 == ::GetModuleFileNameW( nullptr, pszAppPath, MAX_PATH ) )
             {
-                GRSPrintfW( L"»ñÈ¡µ±Ç°Â·¾¶(GetModuleFileNameA)µ÷ÓÃÊ§°Ü(%U)!\n", GetLastError() );
+                GRSPrintfW( L"è·å–å½“å‰è·¯å¾„(GetModuleFileNameA)è°ƒç”¨å¤±è´¥(%U)!\n", GetLastError() );
                 AtlThrowLastWin32();
             }
 
             WCHAR* lastSlash = wcsrchr( pszAppPath, L'\\' );
             if ( lastSlash )
-            {//É¾³ıExeÎÄ¼şÃû
+            {//åˆ é™¤Exeæ–‡ä»¶å
                 *( lastSlash ) = L'\0';
             }
 
             lastSlash = wcsrchr( pszAppPath, L'\\' );
             if ( lastSlash )
-            {//É¾³ıx64Â·¾¶
+            {//åˆ é™¤x64è·¯å¾„
                 *( lastSlash ) = L'\0';
             }
 
             lastSlash = wcsrchr( pszAppPath, L'\\' );
             if ( lastSlash )
-            {//É¾³ıDebug »ò ReleaseÂ·¾¶
+            {//åˆ é™¤Debug æˆ– Releaseè·¯å¾„
                 *( lastSlash + 1 ) = L'\0';
             }
         }
 
         CHAR pszAppPathA[MAX_PATH] = {};
         StringCchCopyA( pszAppPathA, MAX_PATH, T2A( pszAppPath ) );
-        GRSPrintfA( "µ±Ç°³ÌĞòÔËĞĞ»·¾³Â·¾¶Îª£º\"%s\"\n", pszAppPathA );
+        GRSPrintfA( "å½“å‰ç¨‹åºè¿è¡Œç¯å¢ƒè·¯å¾„ä¸ºï¼š\"%s\"\n", pszAppPathA );
 
         CHAR pXFile[MAX_PATH] = {};
         StringCchPrintfA( pXFile, MAX_PATH, "%Assets\\The3DModel\\hero.x", pszAppPathA );
@@ -138,10 +138,10 @@ int APIENTRY _tWinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    
         RtlZeroMemory( &ofn, sizeof( ofn ) );
         ofn.lStructSize = sizeof( ofn );
         ofn.hwndOwner = ::GetConsoleWindow();
-        ofn.lpstrFilter = "x ÎÄ¼ş\0*.x;*.X\0OBJÎÄ¼ş\0*.obj\0FBXÎÄ¼ş\0*.fbx\0ËùÓĞÎÄ¼ş\0*.*\0";
+        ofn.lpstrFilter = "x æ–‡ä»¶\0*.x;*.X\0OBJæ–‡ä»¶\0*.obj\0FBXæ–‡ä»¶\0*.fbx\0æ‰€æœ‰æ–‡ä»¶\0*.*\0";
         ofn.lpstrFile = pXFile;
         ofn.nMaxFile = MAX_PATH;
-        ofn.lpstrTitle = "ÇëÑ¡ÔñÒ»¸öxÎÄ¼ş...";
+        ofn.lpstrTitle = "è¯·é€‰æ‹©ä¸€ä¸ªxæ–‡ä»¶...";
         ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
 
         if ( !GetOpenFileNameA( &ofn ) )
@@ -150,35 +150,35 @@ int APIENTRY _tWinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    
         }
 
         Assimp::Importer aiImporter;
-        // ¶ÁÈ¡xÎÄ¼ş
+        // è¯»å–xæ–‡ä»¶
         const aiScene* pModel = aiImporter.ReadFile( pXFile, ASSIMP_LOAD_FLAGS );
         if ( nullptr == pModel )
         {
-            GRSPrintfA( "ÎŞ·¨½âÎöÎÄ¼ş(%s)£º%s (%d)\n", pXFile, aiImporter.GetErrorString(), ::GetLastError() );
+            GRSPrintfA( "æ— æ³•è§£ææ–‡ä»¶(%s)ï¼š%s (%d)\n", pXFile, aiImporter.GetErrorString(), ::GetLastError() );
             AtlThrowLastWin32();
         }
 
-        GRSPrintfA( "\n¿ªÊ¼½âÎöÄ£ĞÍÎÄ¼ş:\"%s\"", pXFile );
+        GRSPrintfA( "\nå¼€å§‹è§£ææ¨¡å‹æ–‡ä»¶:\"%s\"", pXFile );
         GRSPrintfW( L"\nAssimp File Flags:" );
         ShowSceneFlags( pModel->mFlags );
 
         if ( pModel->mMetaData )
         {
-            GRSPrintfW( L"\nMetaData£º\n" );
+            GRSPrintfW( L"\nMetaDataï¼š\n" );
             GRSConsolePause();
             GRSPrintfW( L"\n" );
             ShowMetadata( pModel->mMetaData );
         }
         else
         {
-            GRSPrintfW( L"¸ÃÄ£ĞÍÖĞÃ»ÓĞMetaDataĞÅÏ¢£¡\n" );
+            GRSPrintfW( L"è¯¥æ¨¡å‹ä¸­æ²¡æœ‰MetaDataä¿¡æ¯ï¼\n" );
         }
 
         if ( pModel->HasMeshes() )
         {
-            GRSPrintfW( L"\nÍø¸ñ£º\nMesh Count[%u]:\n", pModel->mNumMeshes );
+            GRSPrintfW( L"\nç½‘æ ¼ï¼š\nMesh Count[%u]:\n", pModel->mNumMeshes );
             GRSConsolePause();
-            // Íø¸ñ
+            // ç½‘æ ¼
             const aiMesh* paiSubMesh = nullptr;
             for ( UINT i = 0; i < pModel->mNumMeshes; i++ )
             {
@@ -189,16 +189,16 @@ int APIENTRY _tWinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    
         }
         else
         {
-            GRSPrintfW( L"¸ÃÄ£ĞÍÖĞÃ»ÓĞÍø¸ñĞÅÏ¢£¡\n" );
+            GRSPrintfW( L"è¯¥æ¨¡å‹ä¸­æ²¡æœ‰ç½‘æ ¼ä¿¡æ¯ï¼\n" );
         }
 
         if ( pModel->HasMaterials() )
         {
-            GRSPrintfW( L"\n²ÄÖÊ£º\n" );
+            GRSPrintfW( L"\næè´¨ï¼š\n" );
             GRSConsolePause();
             GRSPrintfW( L"\n" );
 
-            // ²ÄÖÊ
+            // æè´¨
             for ( UINT i = 0; i < pModel->mNumMaterials; i++ )
             {
                 const aiMaterial* paiMaterial = pModel->mMaterials[i];
@@ -207,41 +207,41 @@ int APIENTRY _tWinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    
         }
         else
         {
-            GRSPrintfW( L"¸ÃÄ£ĞÍÖĞÃ»ÓĞ²ÄÖÊĞÅÏ¢£¡\n" );
+            GRSPrintfW( L"è¯¥æ¨¡å‹ä¸­æ²¡æœ‰æè´¨ä¿¡æ¯ï¼\n" );
         }
 
         if ( nullptr != pModel->mRootNode )
         {
-            GRSPrintfW( L"\n¹Ç÷À£º\n" );
+            GRSPrintfW( L"\néª¨éª¼ï¼š\n" );
             GRSConsolePause();
             GRSPrintfW( L"\n" );
-            // ¹Ç÷À
+            // éª¨éª¼
             TraverseNodeTree( pModel->mRootNode, 0 );
         }
         else
         {
-            GRSPrintfW( L"¸ÃÄ£ĞÍÖĞÃ»ÓĞ¹Ç÷ÀĞÅÏ¢£¡\n" );
+            GRSPrintfW( L"è¯¥æ¨¡å‹ä¸­æ²¡æœ‰éª¨éª¼ä¿¡æ¯ï¼\n" );
         }
 
         if ( pModel->HasAnimations() )
         {
-            GRSPrintfW( L"\n¹Ø¼üÖ¡¶¯»­£º\n" );
+            GRSPrintfW( L"\nå…³é”®å¸§åŠ¨ç”»ï¼š\n" );
             GRSConsolePause();
             GRSPrintfW( L"\n" );
-            // ¶¯»­ĞòÁĞ
+            // åŠ¨ç”»åºåˆ—
             ShowAnimations( pModel );
         }
         else
         {
-            GRSPrintfW( L"¸ÃÄ£ĞÍÖĞÃ»ÓĞ¹Ø¼üÖ¡¶¯»­ĞÅÏ¢£¡\n" );
+            GRSPrintfW( L"è¯¥æ¨¡å‹ä¸­æ²¡æœ‰å…³é”®å¸§åŠ¨ç”»ä¿¡æ¯ï¼\n" );
         }
 
         if ( pModel->HasTextures() )
         {
-            GRSPrintfW( L"\nÄÚÇ¶ÎÆÀí£º\n" );
+            GRSPrintfW( L"\nå†…åµŒçº¹ç†ï¼š\n" );
             GRSConsolePause();
             GRSPrintfW( L"\n" );
-            // ÄÚÇ¶ÎÆÀí
+            // å†…åµŒçº¹ç†
             aiTexture* paiTexture = nullptr;
             for ( UINT i = 0; i < pModel->mNumTextures; i++ )
             {
@@ -251,13 +251,13 @@ int APIENTRY _tWinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    
         }
         else
         {
-            GRSPrintfW( L"¸ÃÄ£ĞÍÖĞÃ»ÓĞÄÚÇ¶ÎÆÀíĞÅÏ¢£¡\n" );
+            GRSPrintfW( L"è¯¥æ¨¡å‹ä¸­æ²¡æœ‰å†…åµŒçº¹ç†ä¿¡æ¯ï¼\n" );
         }
 
-        // ¹âÔ´
+        // å…‰æº
         if ( pModel->HasLights() )
         {
-            GRSPrintfW( L"\n¹âÔ´£º\n" );
+            GRSPrintfW( L"\nå…‰æºï¼š\n" );
             GRSConsolePause();
             GRSPrintfW( L"\n" );
             for ( UINT i = 0; i < pModel->mNumLights; i++ )
@@ -268,16 +268,16 @@ int APIENTRY _tWinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    
         }
         else
         {
-            GRSPrintfW( L"¸ÃÄ£ĞÍÖĞÃ»ÓĞ¹âÔ´ĞÅÏ¢£¡\n" );
+            GRSPrintfW( L"è¯¥æ¨¡å‹ä¸­æ²¡æœ‰å…‰æºä¿¡æ¯ï¼\n" );
         }
 
 
         if ( pModel->HasCameras() )
         {
-            GRSPrintfW( L"\nÏà»ú£º\n" );
+            GRSPrintfW( L"\nç›¸æœºï¼š\n" );
             GRSConsolePause();
             GRSPrintfW( L"\n" );
-            // Ïà»ú
+            // ç›¸æœº
             for ( UINT i = 0; i < pModel->mNumCameras; i++ )
             {
                 aiCamera* parCamera = pModel->mCameras[i];
@@ -286,12 +286,12 @@ int APIENTRY _tWinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    
         }
         else
         {
-            GRSPrintfW( L"¸ÃÄ£ĞÍÖĞÃ»ÓĞÉãÏñ»úĞÅÏ¢£¡\n" );
+            GRSPrintfW( L"è¯¥æ¨¡å‹ä¸­æ²¡æœ‰æ‘„åƒæœºä¿¡æ¯ï¼\n" );
         }
-        GRSPrintfW( L"½âÎöÏÔÊ¾Íê±Ï£¡\n\n" );
+        GRSPrintfW( L"è§£ææ˜¾ç¤ºå®Œæ¯•ï¼\n\n" );
     }
     catch ( CAtlException& e )
-    {//·¢ÉúÁËCOMÒì³£
+    {//å‘ç”Ÿäº†COMå¼‚å¸¸
         e;
     }
     catch ( ... )
@@ -302,7 +302,7 @@ int APIENTRY _tWinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR    
     return 0;
 }
 
-#define GRS_NAME_ANONYMITY "ÄäÃû"
+#define GRS_NAME_ANONYMITY "åŒ¿å"
 #define GRS_SHOW_VECTOR_1D_FORMAT "(%11.6f)"
 #define GRS_SHOW_VECTOR_2D_FORMAT "(%11.6f,%11.6f)"
 #define GRS_SHOW_VECTOR_3D_FORMAT "(%11.6f,%11.6f,%11.6f)"
@@ -370,7 +370,7 @@ void ShowMesh( const UINT& nIndex, const aiMesh*& paiMesh )
     );
 
     ShowMeshPrimitive( paiMesh->mPrimitiveTypes );
-    GRSPrintfW( L">, ¹ØÁª Material Index:[%u]:\n", paiMesh->mMaterialIndex );
+    GRSPrintfW( L">, å…³è” Material Index:[%u]:\n", paiMesh->mMaterialIndex );
 
     GRSPrintfW( L"AABB:Min" GRS_SHOW_VECTOR_3D_FORMAT L",Max" GRS_SHOW_VECTOR_3D_FORMAT L"\n\n"
         , paiMesh->mAABB.mMin.x
@@ -582,7 +582,7 @@ void ShowMesh( const UINT& nIndex, const aiMesh*& paiMesh )
         for ( UINT i = 0; i < paiMesh->mNumBones; i++ )
         {
             aiBone* paiBone = paiMesh->mBones[i];
-            GRSPrintfA( "\nBone[%u]:\"%s\" - Äæ°ó¶¨Î»×Ë¾ØÕó(Inverse bind pose matrix):\n"
+            GRSPrintfA( "\nBone[%u]:\"%s\" - é€†ç»‘å®šä½å§¿çŸ©é˜µ(Inverse bind pose matrix):\n"
                 , i
                 , paiBone->mName.C_Str()
             );
@@ -609,7 +609,7 @@ void ShowMesh( const UINT& nIndex, const aiMesh*& paiMesh )
     }
 
     //if ( paiMesh->mNumAnimMeshes > 0 )
-    //{// Íø¸ñ¶¯»­£¬ÕâÖÖÇé¿ö¾Í²»Ï¸¾¿ÁË£¬»ù±¾ÉÏ¾ÍÊÇ½øĞĞÍø¸ñÊı¾İÌæ»»
+    //{// ç½‘æ ¼åŠ¨ç”»ï¼Œè¿™ç§æƒ…å†µå°±ä¸ç»†ç©¶äº†ï¼ŒåŸºæœ¬ä¸Šå°±æ˜¯è¿›è¡Œç½‘æ ¼æ•°æ®æ›¿æ¢
     //	paiMesh->mMethod
     //}
 }
@@ -721,9 +721,9 @@ void ShowTextureType( const aiTextureType& emTextureType )
 
 void ShowMaterial( const UINT& nIndex, const aiMaterial*& paiMaterial )
 {
-    const aiString strMaterialName = ( (aiMaterial*) paiMaterial )->GetName(); // ×¢ÒâÕâÒ»ĞĞµÄÇ¿ÖÆÀàĞÍ×ª»»·û^~^
+    const aiString strMaterialName = ( (aiMaterial*) paiMaterial )->GetName(); // æ³¨æ„è¿™ä¸€è¡Œçš„å¼ºåˆ¶ç±»å‹è½¬æ¢ç¬¦^~^
 
-    GRSPrintfA( "\nMaterial[%u]:\"%s\", Property[%u]£º\n"
+    GRSPrintfA( "\nMaterial[%u]:\"%s\", Property[%u]ï¼š\n"
         , nIndex
         , strMaterialName.length > 0 ? strMaterialName.C_Str() : GRS_NAME_ANONYMITY
         , paiMaterial->mNumProperties
@@ -743,7 +743,7 @@ void ShowMaterial( const UINT& nIndex, const aiMaterial*& paiMaterial )
             ShowTextureType( emType );
 
             if ( aiTextureType_NONE == paiMaterialProperty->mSemantic )
-            {// ·ÇÎÆÀíÀàÊôĞÔ
+            {// éçº¹ç†ç±»å±æ€§
                 USES_CONVERSION;
                 GRSPrintfW( L" Property Type: " );
                 switch ( paiMaterialProperty->mType )
@@ -784,7 +784,7 @@ void ShowMaterial( const UINT& nIndex, const aiMaterial*& paiMaterial )
 
             }
             else
-            {// ÎÆÀíÀàÊôĞÔ
+            {// çº¹ç†ç±»å±æ€§
                 aiString aistrPath;
                 aiTextureMapping	mapping = aiTextureMapping_UV;
                 unsigned int		uvindex = 0;
@@ -920,26 +920,26 @@ void ShowMaterial( const UINT& nIndex, const aiMaterial*& paiMaterial )
 }
 
 void ShowAnimationsBehaviour( const aiAnimBehaviour& emBehaviour )
-{// ÏÔÊ¾¶¯»­Ö¡¼ä²îÖµµÄĞĞÎª
+{// æ˜¾ç¤ºåŠ¨ç”»å¸§é—´å·®å€¼çš„è¡Œä¸º
     switch ( emBehaviour )
     {
     case aiAnimBehaviour_DEFAULT:
-    {/** È¡Ä¬ÈÏ½Úµã×ª»»µÄÖµ */
+    {/** å–é»˜è®¤èŠ‚ç‚¹è½¬æ¢çš„å€¼ */
         GRSPrintfA( "aiAnimBehaviour_DEFAULT" );
     }
     break;
     case aiAnimBehaviour_CONSTANT:
-    {/** Ê¹ÓÃ×î½Ó½üµÄ¼üÖµ¶ø²»Ê¹ÓÃ²åÖµ */
+    {/** ä½¿ç”¨æœ€æ¥è¿‘çš„é”®å€¼è€Œä¸ä½¿ç”¨æ’å€¼ */
         GRSPrintfA( "aiAnimBehaviour_CONSTANT" );
     }
     break;
     case aiAnimBehaviour_LINEAR:
-    {/** ×î½üµÄÁ½¸ö¼üµÄÖµ±»ÏßĞÔÍâÍÆÎªµ±Ç°Ê±¼äÖµ¡£*/
+    {/** æœ€è¿‘çš„ä¸¤ä¸ªé”®çš„å€¼è¢«çº¿æ€§å¤–æ¨ä¸ºå½“å‰æ—¶é—´å€¼ã€‚*/
         GRSPrintfA( "aiAnimBehaviour_LINEAR" );
     }
     break;
     case aiAnimBehaviour_REPEAT:
-    {/** ¶¯»­ÖØ¸´¡£Èç¹û¶¯»­¼ü´Ónµ½m£¬µ±Ç°Ê±¼äÎªt£¬ÔòÊ¹ÓÃÖµÎª(t-n) % (|m-n|)¡£*/
+    {/** åŠ¨ç”»é‡å¤ã€‚å¦‚æœåŠ¨ç”»é”®ä»nåˆ°mï¼Œå½“å‰æ—¶é—´ä¸ºtï¼Œåˆ™ä½¿ç”¨å€¼ä¸º(t-n) % (|m-n|)ã€‚*/
         GRSPrintfA( "aiAnimBehaviour_REPEAT" );
     }
     break;
@@ -957,7 +957,7 @@ void ShowAnimations( const aiScene* pModel )
 
     for ( size_t i = 0; i < pModel->mNumAnimations; i++ )
     {
-        GRSPrintfA( "Anim[%u]£º\"%s\"\tDuration Time: " GRS_SHOW_VECTOR_1D_FORMAT " ticks, Channels[%u]\n"
+        GRSPrintfA( "Anim[%u]ï¼š\"%s\"\tDuration Time: " GRS_SHOW_VECTOR_1D_FORMAT " ticks, Channels[%u]\n"
             , (UINT) i
             , pModel->mAnimations[i]->mName.C_Str()
             , pModel->mAnimations[i]->mDuration
@@ -1010,7 +1010,7 @@ void ShowChannleInfo( const aiNodeAnim* pChannle )
     GRSPrintfW( L"\nRotation Keys[%u]:\n", pChannle->mNumRotationKeys );
 
     for ( i = 0; i < pChannle->mNumRotationKeys; i++ )
-    {// Ğı×ª·ÖÁ¿ÊÇËÄÔªÊı£¬ËÄ¸ö·ÖÁ¿¶¼ÓĞÒâÒå
+    {// æ—‹è½¬åˆ†é‡æ˜¯å››å…ƒæ•°ï¼Œå››ä¸ªåˆ†é‡éƒ½æœ‰æ„ä¹‰
         GRSPrintfW( L"[%4u]:Time=" GRS_SHOW_VECTOR_1D_FORMAT " Q" GRS_SHOW_VECTOR_4D_FORMAT ", "
             , i
             , pChannle->mRotationKeys[i].mTime
@@ -1049,13 +1049,13 @@ void TraverseNodeTree( const aiNode* pNode, int iBlank )
 
     int iY = GRSGetConsoleCurrentY();
 
-    //Ìî³ä²»Á¬ĞøµÄÁĞ
+    //å¡«å……ä¸è¿ç»­çš„åˆ—
     if ( pNode->mParent )
-    {//ÓĞ¸¸½Úµã
-        aiNode** pBrother = pNode->mParent->mChildren;//ĞÖµÜ½ÚµãÁĞ±í
+    {//æœ‰çˆ¶èŠ‚ç‚¹
+        aiNode** pBrother = pNode->mParent->mChildren;//å…„å¼ŸèŠ‚ç‚¹åˆ—è¡¨
         UINT nPos = 0;
         for ( nPos = 0; nPos < pNode->mParent->mNumChildren; nPos++ )
-        {//²éÕÒ½ÚµãÔÚĞÖµÜÁĞ±íµÄÎ»ÖÃ£¬µ±Ç°½Úµã¿Ï¶¨ÔÚ¸¸½ÚµãµÄĞÖµÜÁĞ±íÖĞ
+        {//æŸ¥æ‰¾èŠ‚ç‚¹åœ¨å…„å¼Ÿåˆ—è¡¨çš„ä½ç½®ï¼Œå½“å‰èŠ‚ç‚¹è‚¯å®šåœ¨çˆ¶èŠ‚ç‚¹çš„å…„å¼Ÿåˆ—è¡¨ä¸­
             if ( pNode == pNode->mParent->mChildren[nPos] )
             {
                 break;
@@ -1066,7 +1066,7 @@ void TraverseNodeTree( const aiNode* pNode, int iBlank )
         SHORT sLine = 0;
 
         if ( 0 != nPos )
-        {//²»ÊÇµÚÒ»¸öĞÖµÜ
+        {//ä¸æ˜¯ç¬¬ä¸€ä¸ªå…„å¼Ÿ
             UINT nPrev = --nPos;
             if ( GRSFindConsoleLine( (void*) pNode->mParent->mChildren[nPrev], sLine ) )
             {
@@ -1074,27 +1074,27 @@ void TraverseNodeTree( const aiNode* pNode, int iBlank )
             }
         }
         else
-        {// µÚÒ»¸öĞÖµÜ ÕÒ¸¸Ç×ĞĞ
+        {// ç¬¬ä¸€ä¸ªå…„å¼Ÿ æ‰¾çˆ¶äº²è¡Œ
             if ( GRSFindConsoleLine( (void*) pNode->mParent, sLine ) )
             {
                 iRow = iY - sLine - 1;
             }
         }
 
-        GRSPushConsoleCursor();//±£´æ¹â±êÎ»ÖÃ
+        GRSPushConsoleCursor();//ä¿å­˜å…‰æ ‡ä½ç½®
         while ( iRow-- )
-        {//²»Í£ÉÏÒÆ¶¯¹â±ê£¬Êä³ö|
-            GRSMoveConsoleCursor( 0, -1 );//ÉÏÒÆ
-            GRSPrintfA( "|" );//´òÓ¡|
-            GRSMoveConsoleCursor( -1, 0 );//×óÒÆ»Ø¸´¹â±êÎ»ÖÃ
+        {//ä¸åœä¸Šç§»åŠ¨å…‰æ ‡ï¼Œè¾“å‡º|
+            GRSMoveConsoleCursor( 0, -1 );//ä¸Šç§»
+            GRSPrintfA( "|" );//æ‰“å°|
+            GRSMoveConsoleCursor( -1, 0 );//å·¦ç§»å›å¤å…‰æ ‡ä½ç½®
         }
-        GRSPopConsoleCursor();//»Ö¸´¹â±êÎ»ÖÃ
+        GRSPopConsoleCursor();//æ¢å¤å…‰æ ‡ä½ç½®
     }
 
 
     GRSSaveConsoleLine( (void*) pNode, iY );
 
-    GRSPrintfA( "+¨D¨DName:\"%s\", Childs[%u]"
+    GRSPrintfA( "+â€•â€•Name:\"%s\", Childs[%u]"
         , ( pNode->mName.length > 0 ) ? pNode->mName.C_Str() : GRS_NAME_ANONYMITY
         , pNode->mNumChildren
         , pNode->mNumMeshes );
@@ -1118,7 +1118,7 @@ void TraverseNodeTree( const aiNode* pNode, int iBlank )
 
     for ( UINT i = 0; i < pNode->mNumChildren; ++i )
     {
-        TraverseNodeTree( pNode->mChildren[i], iBlank + 1 );//ÀÛ¼ÓËõ½ø´ÎÊıºÍĞĞÊı
+        TraverseNodeTree( pNode->mChildren[i], iBlank + 1 );//ç´¯åŠ ç¼©è¿›æ¬¡æ•°å’Œè¡Œæ•°
     }
 }
 
